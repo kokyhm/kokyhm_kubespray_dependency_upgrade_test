@@ -23,7 +23,7 @@ jobs:
 
       - name: Run Update Version Script
         run: |
-          python update_version.py --loglevel DEBUG
+          python update_version.py --loglevel INFO
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
