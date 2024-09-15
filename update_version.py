@@ -304,14 +304,8 @@ def process_component(component, component_data, path_main, path_download, path_
 def main(loglevel):
     setup_logging(loglevel)
 
-    component_names = ['ciliumcli', 'cni', 'containerd']
-    tmp_component_info = {}
-    for cname in component_names:
-        print(f'{component_info[cname]}')
-        tmp_component_info[cname] = component_info[cname]
-    
     logging.debug("Starting main loop over components.")
-    for component, component_data in tmp_component_info.items():
+    for component, component_data in component_info.items():
         process_component(component, component_data, path_main, path_download, path_checksum, architectures, oses, session)
 
 
