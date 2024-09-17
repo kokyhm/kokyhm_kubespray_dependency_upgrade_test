@@ -35,12 +35,12 @@ def setup_logging(loglevel):
 
 def get_session_with_retries():
     session = requests.Session()
-    retry = Retry(
-        total=5,
-        backoff_factor=2, # Wait 2, 4, 8, etc. seconds between retries
-        status_forcelist=[500, 502, 503, 504] # Retry on this HTTP codes
+    adapter = HTTPAdapter(
+        pool_connections=50,
+        pool_maxsize=50,
+        max_retries=Retry(total=3, backoff_factor=1)
     )
-    adapter = HTTPAdapter(max_retries=retry)
+
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
@@ -264,7 +264,7 @@ def process_component(component, component_data, session):
         checksums = get_checksums(component, component_data, latest_version, session)
         update_yaml_checksum(component_data, checksums, latest_version)
 
-def main(loglevel, maxworkers):
+def main(loglevel, maxworkers, component):
     setup_logging(loglevel)
     
     session = get_session_with_retries()
@@ -274,22 +274,21 @@ def main(loglevel, maxworkers):
     checksum_yaml_data = load_yaml_file(path_checksum)
     download_yaml_data = load_yaml_file(path_download)
 
-    #component_names = ['ciliumcli', 'cni', 'containerd']
-    # component_names = ['crio']
-    # tmp_component_info = {}
-    # for cname in component_names:
-    #     print(f'{component_info[cname]}')
-    #     tmp_component_info[cname] = component_info[cname]
-
-
-
-    with ThreadPoolExecutor(max_workers = maxworkers) as executor:
-        futures = []
-        logging.info(f'Running with {executor._max_workers} executors')
-        for component, component_data in component_info.items():
-            futures.append(executor.submit(process_component, component, component_data, session))
-        for future in futures:
-            future.result()
+    if component != 'all':
+        if component in component_info:
+            logging.info(f'Processing specified component: {component}')
+            process_component(component, component_info[component], session)
+        else:
+            logging.error(f'Component {component} not found in config.')
+            return
+    else:
+        with ThreadPoolExecutor(max_workers = maxworkers) as executor:
+            futures = []
+            logging.info(f'Running with {executor._max_workers} executors')
+            for component, component_data in component_info.items():
+                futures.append(executor.submit(process_component, component, component_data, session))
+            for future in futures:
+                future.result()
 
     save_yaml_file(path_checksum, checksum_yaml_data)
     save_yaml_file(path_download, download_yaml_data)
@@ -299,7 +298,8 @@ if __name__ == '__main__':
     parser.add_argument('--loglevel', default='INFO', help='Set the log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
     parser.add_argument('--maxworkers', type=int, default=4, help='Maximum number of concurrent workers, use with caution')
     parser.add_argument('--skip-if-up-to-date', action='store_true', help='Skip processing component if the current version is up to date')
+    parser.add_argument('--component', default='all', help='Specify a component to process, default is all components')
 
     args = parser.parse_args()
 
-    main(args.loglevel, args.maxworkers)
+    main(args.loglevel, args.maxworkers, args.component)
