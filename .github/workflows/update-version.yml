@@ -30,6 +30,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: update-dependency-checksum
-          title: 'Update dependency checksum to the latest version'
-          body: 'This PR updates the dependency checksum to the latest version.'
+          title: 'Update dependency versions and checksums to the latest version'
+          body: 'This PR updates the dependency versions and checksums to the latest version.'
           labels: 'dependencies'
