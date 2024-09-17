@@ -1,318 +1,305 @@
 import os
 import re
-import json
-import time
 import logging
-import tempfile
-import hashlib
+import requests
+import time
+import json
 import argparse
 import requests
+import hashlib
 from ruamel.yaml import YAML
-from ruamel.yaml.error import YAMLError
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from io import StringIO
+from concurrent.futures import ThreadPoolExecutor
 from config import component_info, architectures, oses, path_download, path_checksum, path_main
 
-
-
-
-def get_session_with_retries(retries=5, backoff_factor=0.3, status_forcelist=(500, 502, 503, 504)):
-    session = requests.Session()
-    retry = Retry(
-        total=retries,
-        read=retries,
-        connect=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
-
-session = get_session_with_retries()
 yaml = YAML()
 yaml.explicit_start = True
 yaml.preserve_quotes = True
 yaml.width = 4096
 yaml.indent(mapping=2, sequence=4, offset=2)
 
+main_yaml_data = {}
+checksum_yaml_data = {}
+download_yaml_data = {}
+
+cache_dir = './cache'
+cache_expiry_seconds = 86400
+os.makedirs(cache_dir, exist_ok=True)
 
 def setup_logging(loglevel):
     numeric_level = getattr(logging, loglevel.upper(), None)
     if not isinstance(numeric_level, int):
-        raise ValueError(f"Invalid log level: {loglevel}")
+        raise ValueError(f'Invalid log level: {loglevel}')
     logging.basicConfig(level=numeric_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def get_session_with_retries():
+    session = requests.Session()
+    retry = Retry(
+        total=5,
+        backoff_factor=2, # Wait 2, 4, 8, etc. seconds between retries
+        status_forcelist=[500, 502, 503, 504] # Retry on this HTTP codes
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
-def download_file(url, session):
-    try:
-        response = session.get(url, timeout=10)
-        response.raise_for_status()
-
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            tmp_file.write(response.content)
-            tmp_file_path = tmp_file.name
-
-        logging.info(f"Downloaded file from {url} to {tmp_file_path}")
-        return tmp_file_path
-    except requests.exceptions.RequestException as e:
-        logging.warning(f"Failed to download {url}: {e}")
-        return None
-
-
-def calculate_checksum(file_path, checksum_type='sha256'):
-    hasher = hashlib.new(checksum_type)
-
-    try:
-        with open(file_path, 'rb') as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hasher.update(chunk)
-
-        return hasher.hexdigest()
-    except Exception as e:
-        logging.error(f"Error calculating checksum for {file_path}: {e}")
-        return None
-    
-
-def cache_release_info(component, release_url, session):
-    cache_dir = 'cache'
+def load_from_cache(component):
     cache_file = os.path.join(cache_dir, f'{component}.json')
-    cache_expiry = 86400
-
-    os.makedirs(cache_dir, exist_ok=True)
-
     if os.path.exists(cache_file):
         file_age = time.time() - os.path.getmtime(cache_file)
-        if file_age < cache_expiry:
-            logging.debug(f"Reading cached release info for {component}")
-            with open(cache_file, 'r') as file:
-                return json.load(file)
-
-    try:
-        logging.debug(f"Fetching release info for {component} from {release_url}")
-        response = session.get(release_url, timeout=10)
-        response.raise_for_status()
-
-        try:
-            release_info = response.json()
-        except json.JSONDecodeError:
-            release_info = {"tag_name": response.text}
-
-        with open(cache_file, 'w') as file:
-            file.write(json.dumps(release_info, indent=2))
-
-        return release_info
-
-    except requests.exceptions.RequestException as e:
-        logging.error(f"An error occurred while fetching release info for {component}: {e}")
-
+        if file_age < cache_expiry_seconds:
+            logging.info(f'Using cached release info for {component}')
+            with open(cache_file, 'r') as f:
+                return json.load(f)
     return None
 
+def save_to_cache(component, data):
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_file = os.path.join(cache_dir, f'{component}.json')
+    with open(cache_file, 'w') as f:
+        json.dump(data, f, indent=2)
+    logging.info(f'Cached release info for {component}')
 
-def get_latest_version(component, release_info):
-    latest_version = None
+def get_current_version(component_data):
+    kube_major_version = component_data['kube_major_version']
+    placeholder_version = [kube_major_version if item == 'kube_major_version' else item for item in component_data['placeholder_version']]
 
-    if isinstance(release_info, dict):
-        latest_version = release_info.get("tag_name", None)
+    current_version = download_yaml_data
+    for key in placeholder_version:
+        current_version = current_version.get(key)
 
-    if not latest_version and isinstance(release_info, list):
+    return current_version
+
+def get_latest_version(component, component_data, session):
+    release_info = load_from_cache(component)
+    if not release_info:    
         try:
-            latest_version = release_info[0]["name"]
-            latest_version = re.sub(r'^release-([0-9]+).*', r'\1', latest_version)
-        except:
-            latest_version = None
+            response = session.get(component_data['url_release'], timeout=10)
+            response.raise_for_status()
+            release_info = response.json()
+            save_to_cache(component, release_info)
+        except json.JSONDecodeError: # handle kube* components returning version as a string
+            release_info = {'tag_name': response.text}
+        except Exception as e:
+            logging.error(f'Error fetching latest version for {component}: {e}')
+            return None
+    latest_version = None
+    try:
+        # Generic
+        if isinstance(release_info, dict):
+            latest_version = release_info.get('tag_name', None)
+        # Gvisor
+        elif isinstance(release_info, list):
+            latest_version = release_info[0]['name']
+    except:
+        latest_version = None
 
-    if isinstance(latest_version, str) and component in ["youki", "nerdctl", "cri_dockerd", "containerd"]:
-        latest_version = latest_version.lstrip("v")
+    # Extract version for Gvisor
+    if isinstance(latest_version, str) and component in ['gvisor_containerd_shim', 'gvisor_runsc']:
+        latest_version = re.sub(r'^release-([0-9]+).*', r'\1', latest_version)
+
+    # Strip v for specific components
+    if isinstance(latest_version, str) and component in ['youki', 'nerdctl', 'cri_dockerd', 'containerd']:
+        latest_version = latest_version.lstrip('v')
 
     return latest_version
 
+def calculate_checksum(cachefile, url_download, arch):
+    if url_download.endswith('.sha256sum'):
+        with open(f'cache/{cachefile}', 'r') as f:
+            checksum_line = f.readline().strip()
+            return checksum_line.split()[0]
+    elif url_download.endswith('SHA256SUMS'):
+        with open(f'cache/{cachefile}', 'r') as f:
+            for line in f:
+                if 'linux' in line and arch in line:
+                    return line.split()[0]
+    elif url_download.endswith('bsd'):
+        with open(f'cache/{cachefile}', 'r') as f:
+            for line in f:
+                if 'SHA256' in line and 'linux' in line and arch in line:
+                    return line.split()[0]
+    sha256_hash = hashlib.sha256()
+    with open(f'cache/{cachefile}', "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+def download_file_and_get_checksum(component, arch, url_download, session):
+    cache_file = f'{component}-{arch}'
+    if os.path.exists(f'cache/{cache_file}'):
+        logging.info(f'Using cached file for {url_download}')
+        return calculate_checksum(cache_file, arch, url_download)
+    try:
+        response = session.get(url_download, timeout=10)
+        response.raise_for_status()
+        with open(f'cache/{cache_file}', 'wb') as f:
+            f.write(response.content)
+        logging.info(f'Downloaded and cached file for {url_download}')
+        return calculate_checksum(cache_file, arch, url_download)
+    except Exception as e:
+        logging.error(e)
+        return None
+
+def get_checksums(component, component_data, version, session):
+    checksums = {}
+    url_download_template = component_data['url_download'].replace('VERSION', version)
+    if component_data['checksum_structure'] == 'os_arch':
+        # OS -> Arch -> Checksum
+        for os_name in oses:
+            checksums[os_name] = {}
+            for arch in architectures:
+                url_download = url_download_template.replace('OS', os_name).replace('ARCH', arch)
+                checksum = download_file_and_get_checksum(component, arch, url_download, session)
+                if not checksum:
+                    checksum = 0
+                checksums[os_name][arch] = checksum
+    elif component_data['checksum_structure'] == 'arch':
+        # Arch -> Checksum
+        for arch in architectures:
+            url_download = url_download_template.replace('ARCH', arch)
+            checksum = download_file_and_get_checksum(component, arch, url_download, session)
+            if not checksum:
+                checksum = 0
+            checksums[arch] = checksum
+    elif component_data['checksum_structure'] == 'simple':
+        # Checksum
+        checksum = download_file_and_get_checksum(component, '', url_download_template, session)
+        if not checksum:
+            checksum = 0
+        checksums[version] = checksum
+    return checksums
+
+def update_yaml_checksum(component_data, checksums, version):
+    placeholder_checksum = component_data['placeholder_checksum']
+    checksum_structure = component_data['checksum_structure']
+    logging.info(f'Updating {placeholder_checksum} with {checksums}')
+    
+    current = checksum_yaml_data[placeholder_checksum]
+
+    if checksum_structure == 'simple': 
+        # Simple structure (placeholder_checksum -> version -> checksum)
+        current[(version)] = checksums[version]
+
+    elif checksum_structure == 'os_arch':  
+        # OS structure (placeholder_checksum -> os -> arch -> version -> checksum)
+        for os_name, arch_dict in checksums.items():
+            os_current = current.setdefault(os_name, {})
+            for arch, checksum in arch_dict.items():
+                os_current[arch] = {(version): checksum, **os_current.get(arch, {})}
+
+    elif checksum_structure == 'arch':
+        # Arch structure (placeholder_checksum -> arch -> version -> checksum)
+        for arch, checksum in checksums.items():
+            current[arch] = {(version): checksum, **current.get(arch, {})}
+
+def resolve_kube_dependent_component_version(component, component_data, version):
+    kube_major_version = component_data['kube_major_version']
+    if component in ['crictl', 'crio']:
+        try:
+            component_major_version = '.'.join(version.split('.')[:2])
+            if component_major_version == kube_major_version:
+                resolved_version = kube_major_version
+            else:
+                resolved_version = component_major_version
+        except (IndexError, AttributeError):
+            logging.error(f"Error parsing version for {component}: {version}")
+            return
+    else:
+        resolved_version = kube_major_version
+    return resolved_version
+
+def update_yaml_version(component, component_data, version):
+    placeholder_version = component_data['placeholder_version']
+    resolved_version = resolve_kube_dependent_component_version(component, component_data, version)
+    updated_placeholder = [
+        resolved_version if item == 'kube_major_version' else item 
+        for item in placeholder_version
+    ]
+    logging.info(f'Updating {updated_placeholder} to {version}')
+    current = download_yaml_data
+    if len(updated_placeholder) == 1:
+        current[updated_placeholder[0]] = version
+    else:
+        for key in updated_placeholder[:-1]:
+            current = current.setdefault(key, {})
+        final_key = updated_placeholder[-1]
+        if final_key in current:
+            current[final_key] = version
+        else:
+            new_entry = {final_key: version, **current}
+            current.clear()
+            current.update(new_entry)
 
 def load_yaml_file(yaml_file):
     try:
-        with open(yaml_file, "r") as f:
-            return yaml.load(f) or {}
-    except YAMLError as e:
-        logging.error(f"Error while parsing YAML file {yaml_file}: {e}")
-        return None
+        with open(yaml_file, 'r') as f:
+            return yaml.load(f)
     except FileNotFoundError:
-        logging.warning(f"YAML file {yaml_file} not found, initializing empty structure.")
+        logging.warning(f'YAML file {yaml_file} not found.')
         return {}
 
-
 def save_yaml_file(yaml_file, data):
-    try:
-        with open(yaml_file, "w") as f:
-            yaml.dump(data, f)
-    except Exception as e:
-        logging.error(f"Error while saving YAML file {yaml_file}: {e}")
-
-
-def get_yaml_value(yaml_file, keys):
-    data = load_yaml_file(yaml_file)
-    if len(keys) == 1:
-        key = keys[0]
-        data = data[key]
-    else:
-        for key in keys:
-            if isinstance(data, dict) and key in data:
-                data = data[key]    
-    return data
-
-
-def post_process_yaml(yaml_content):
-    pattern = re.compile(r"'(\d+(\.\d+)*)'")
-    processed_yaml = pattern.sub(r"\1", yaml_content)
-    return processed_yaml
-
-
-def update_yaml_value(yaml_file, keys, value):
-    data = load_yaml_file(yaml_file)
-    if not data:
-        return
-
-    current = data
-    for key in keys[:-1]:
-        if key not in current:
-            current[key] = {}
-        current = current[key]
-
-    final_key = keys[-1]
-    new_entry = {final_key: value}
-    
-    if final_key in current:
-        current[final_key] = value
-    else:
-        if isinstance(current, dict):
-            current = {**new_entry, **current}
-
-    if len(keys) > 1:
-        parent = data
-        for key in keys[:-2]:
-            parent = parent.get(key, {})
-        parent[keys[-2]] = current
-
-    logging.info(f"Updating {keys} with value {value}")
-
-    yaml_buffer = StringIO()
-    yaml.dump(data, yaml_buffer)
-    yaml_content = yaml_buffer.getvalue()
-    processed_yaml = post_process_yaml(yaml_content)
-
     with open(yaml_file, 'w') as f:
-        f.write(processed_yaml)
-    
-    yaml_buffer = StringIO(processed_yaml)
-    data = yaml.load(yaml_buffer)
-    save_yaml_file(yaml_file, data)
+        yaml.dump(data, f)
 
-    logging.debug(f"Updated and post-processed YAML written to {yaml_file}")
+def process_component(component, component_data, session):
+    logging.info(f'Processing component: {component}')
 
-
-def get_component_checksums(component, download_url, arch, version, session):
-    if component in ["gvisor_runsc", "gvisor_containerd_shim"]:
-        tmp_arch = arch.replace("arm64", "aarch64").replace("amd64", "x86_64")
-    elif component == "youki":
-        tmp_arch = arch.replace("arm64", "aarch64-gnu").replace("amd64", "x86_64-gnu")
-    else:
-        tmp_arch = arch
-
-    tmp_download_url = download_url.replace("VERSION", version).replace("ARCH", tmp_arch)
-    logging.debug(f"Downloading file {tmp_download_url}")
-
-    tmp_file_path = download_file(tmp_download_url, session)
-    if tmp_file_path is None:
-        return None
-
-    if download_url.endswith((".sha256", ".sha256sum")):
-        try:
-            with open(tmp_file_path, 'r') as f:
-                content = f.read().strip()
-                sha256 = content.split()[0] if content else None
-            os.remove(tmp_file_path)
-            return sha256
-        except Exception as e:
-            logging.error(f"Error reading checksum file {tmp_file_path}: {e}")
-            os.remove(tmp_file_path)
-            return None
-
-    sha256 = calculate_checksum(tmp_file_path)
-    os.remove(tmp_file_path)
-    return sha256
-
-
-def process_checksums(component, download_url, checksum_placeholder, architectures, latest_version, path_checksum, session, oses=None):
-    if component == 'krew':
-        for os in oses:
-            tmp_download_url = download_url.replace("OS", os)
-            for arch in architectures:
-                checksum = get_component_checksums(component, tmp_download_url, arch, latest_version, session)
-                if checksum:
-                    update_yaml_value(path_checksum, checksum_placeholder + [os, arch, latest_version], checksum)
-                else:
-                    update_yaml_value(path_checksum, checksum_placeholder + [os, arch, latest_version], 0)
-    elif component == 'calico_crds':
-        checksum = get_component_checksums(component, download_url, '', latest_version, session)
-        if checksum:
-            update_yaml_value(path_checksum, checksum_placeholder + [latest_version], checksum)
-        else:
-            update_yaml_value(path_checksum, checksum_placeholder + [latest_version], 0)
-    else:
-        for arch in architectures:
-            checksum = get_component_checksums(component, download_url, arch, latest_version, session)
-            if checksum:
-                update_yaml_value(path_checksum, checksum_placeholder + [arch, latest_version], checksum)
-            else:
-                update_yaml_value(path_checksum, checksum_placeholder + [arch, latest_version], 0)
-
-
-def process_component(component, component_data, path_main, path_download, path_checksum, architectures, oses, session):
-    logging.info(f"Processing component {component}")
-    release_url = component_data['release_url']
-    download_url = component_data['download_url']
-    checksum_placeholder = component_data['checksum_placeholder']
-
-    kube_version = get_yaml_value(path_main, ['kube_version'])
+    kube_version = main_yaml_data.get('kube_version')
     kube_major_version = '.'.join(kube_version.split('.')[:2])
+    component_data['kube_major_version'] = kube_major_version # needed for the update of nested versions
 
-    version_placeholder = [kube_major_version if item == 'kube_major_version' else item for item in component_data['version_placeholder']]
+    current_version = get_current_version(component_data)
+    latest_version = get_latest_version(component, component_data, session)
 
-    release_info = cache_release_info(component, release_url, session)
-    if not release_info:
-        logging.warning(f"Skipping {component} due to missing release info.")
+    if args.skip_if_up_to_date and current_version == latest_version:
+        logging.info(f'Skipping component {component}: current version {current_version} is up-to-date.')
         return
+    
+    if latest_version and not component.startswith("kube"):
+        update_yaml_version(component, component_data, latest_version)
+        checksums = get_checksums(component, component_data, latest_version, session)
+        update_yaml_checksum(component_data, checksums, latest_version)
 
-    if component.startswith('kube'):
-        current_version = get_yaml_value(path_main, version_placeholder)
-    else:
-        current_version = get_yaml_value(path_download, version_placeholder)
-    latest_version = get_latest_version(component, release_info)
-    logging.info(f"Component {component} version, current: {current_version}, latest: {latest_version}")
-
-
-    process_checksums(component, download_url, checksum_placeholder, architectures, latest_version, path_checksum, session, oses)
-
-    if not component.startswith('kube'):
-        logging.info(f"Updating {component} version to {latest_version}")
-        update_yaml_value(path_download, version_placeholder, latest_version)
-
-
-
-def main(loglevel):
+def main(loglevel, maxworkers):
     setup_logging(loglevel)
+    
+    session = get_session_with_retries()
 
-    logging.debug("Starting main loop over components.")
-    for component, component_data in component_info.items():
-        process_component(component, component_data, path_main, path_download, path_checksum, architectures, oses, session)
+    global main_yaml_data, checksum_yaml_data, download_yaml_data
+    main_yaml_data = load_yaml_file(path_main)
+    checksum_yaml_data = load_yaml_file(path_checksum)
+    download_yaml_data = load_yaml_file(path_download)
+
+    #component_names = ['ciliumcli', 'cni', 'containerd']
+    # component_names = ['crio']
+    # tmp_component_info = {}
+    # for cname in component_names:
+    #     print(f'{component_info[cname]}')
+    #     tmp_component_info[cname] = component_info[cname]
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Component version updater.')
+
+    with ThreadPoolExecutor(max_workers = maxworkers) as executor:
+        futures = []
+        logging.info(f'Running with {executor._max_workers} executors')
+        for component, component_data in component_info.items():
+            futures.append(executor.submit(process_component, component, component_data, session))
+        for future in futures:
+            future.result()
+
+    save_yaml_file(path_checksum, checksum_yaml_data)
+    save_yaml_file(path_download, download_yaml_data)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Component version updater with logging and concurrency.')
     parser.add_argument('--loglevel', default='INFO', help='Set the log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
+    parser.add_argument('--maxworkers', type=int, default=4, help='Maximum number of concurrent workers, use with caution')
+    parser.add_argument('--skip-if-up-to-date', action='store_true', help='Skip processing component if the current version is up to date')
 
     args = parser.parse_args()
 
-    main(args.loglevel)
+    main(args.loglevel, args.maxworkers)
