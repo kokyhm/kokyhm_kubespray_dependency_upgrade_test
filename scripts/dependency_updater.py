@@ -403,12 +403,10 @@ def process_component(component, component_data, session, version_diff):
 
     # Get latest version
     if component_data['release_type'] == 'tag':
-        logging.info('here 1')
         release = get_release_tag(component, component_data, session)
         if release:
             latest_version = release.get('name')
     else:
-        logging.info('here 2')
         release = get_release(component, component_data, session)
         latest_version = release.get('tagName')    
 
