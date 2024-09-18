@@ -63,7 +63,7 @@ jobs:
             count=$((count + 1))
 
             # Stop after triggering 30 actions
-            if [ "$count" -ge 5 ]; then
+            if [ "$count" -ge 1 ]; then
               echo "Reached the limit of 30 triggered actions."
               break
             fi

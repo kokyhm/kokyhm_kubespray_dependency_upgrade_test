@@ -6,15 +6,6 @@ on:
       component:
         description: "Component to update"
         required: true
-      current_version:
-        description: "Current version of the component"
-        required: true
-      latest_version:
-        description: "Latest version of the component"
-        required: true
-      release:
-        description: "Component release information"
-        required: true
 
 jobs:
   create-pull-request:

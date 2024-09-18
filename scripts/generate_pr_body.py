@@ -139,7 +139,7 @@ def main(component):
         commits = get_commits(name, release)
         if commits:
             pr_body += commits
-    return pr_body.strip()
+    print(pr_body.strip())
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Pull Request body generator')
