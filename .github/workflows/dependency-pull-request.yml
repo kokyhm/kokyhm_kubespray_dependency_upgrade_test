@@ -14,7 +14,7 @@ on:
         required: true
       component_release:
         description: "Component release information"
-        required: false
+        required: true
 
 jobs:
   create-pull-request:
@@ -39,6 +39,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/dependency_updater.py --component ${{ github.event.inputs.component }}
+
+      - name: Generate PR body with links
+        id: generate_pr_body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/generate_pr_body.py \
+                --component ${{ github.event.inputs.component }}
+                --current_version ${{ github.event.inputs.current_version }} \
+                --latest_version ${{ github.event.inputs.latest_version }} \
+                --component_release "${{ github.event.inputs.component_release }}"
+
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5

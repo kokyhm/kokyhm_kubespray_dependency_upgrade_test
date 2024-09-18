@@ -14,21 +14,26 @@ from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
 from dependency_updater_config import component_info, architectures, oses, path_download, path_checksum, path_main, path_versiong_diff
 
+
 yaml = YAML()
 yaml.explicit_start = True
 yaml.preserve_quotes = True
 yaml.width = 4096
 yaml.indent(mapping=2, sequence=4, offset=2)
 
+
+pwd = os.getcwd()
 cache_dir = './cache'
 cache_expiry_seconds = 86400
 os.makedirs(cache_dir, exist_ok=True)
 
-GITHUB_API_URL = "https://api.github.com/graphql"
-GH_TOKEN = os.getenv('GH_TOKEN')
-if not GH_TOKEN:
+
+github_api_url = "https://api.github.com/graphql"
+gh_token = os.getenv('GH_TOKEN')
+if not gh_token:
     logging.error("GH_TOKEN is not set. You can set it via 'export GH_TOKEN=<your-token>'. Exiting.")
     sys.exit(1)
+
 
 def setup_logging(loglevel):
     log_format = '%(asctime)s - %(levelname)s - [%(threadName)s] - %(message)s'
@@ -77,14 +82,14 @@ def get_current_version(component, component_data):
         current_version = current_version.get(key)
     return current_version
 
-def get_release(component, component_data, session):
+def get_release(component, component_data, session, number_of_releases=10):
     release = load_from_cache(component)
     if not release:    
         try:
             query = """
                 query {
                     repository(owner: "%s", name: "%s") {
-                        releases(first: 10, orderBy: {field: CREATED_AT, direction: DESC}) {
+                        releases(first: %s, orderBy: {field: CREATED_AT, direction: DESC}) {
                             nodes {
                                 tagName
                                 url
@@ -94,18 +99,18 @@ def get_release(component, component_data, session):
                         }
                     }
                 }
-            """ % (component_data['owner'], component_data['repo'])
+            """ % (component_data['owner'], component_data['repo'], number_of_releases)
 
             headers = {
-                "Authorization": f"Bearer {GH_TOKEN}",
+                "Authorization": f"Bearer {gh_token}",
                 "Content-Type": "application/json"
             }
 
-            response = session.post(GITHUB_API_URL, json={'query': query}, headers=headers)
+            response = session.post(github_api_url, json={'query': query}, headers=headers)
             response.raise_for_status()
 
             data = response.json()
-
+            logging.debug(f'Component {component} releases: {data}')
             # Look for the release marked as latest
             for release_node in data['data']['repository']['releases']['nodes']:
                 if release_node['isLatest']:
@@ -151,14 +156,15 @@ def get_release_tag(component, component_data, session):
             """ % (component_data['owner'], component_data['repo'])
 
             headers = {
-                "Authorization": f"Bearer {GH_TOKEN}",
+                "Authorization": f"Bearer {gh_token}",
                 "Content-Type": "application/json"
             }
 
-            response = session.post(GITHUB_API_URL, json={'query': query}, headers=headers)
+            response = session.post(github_api_url, json={'query': query}, headers=headers)
             response.raise_for_status()
 
             data = response.json()
+            logging.debug(f'Component {component} releases: {data}')
             tag = data['data']['repository']['refs']['edges'][0]['node']
             save_to_cache(component, tag)
             return tag
@@ -237,20 +243,16 @@ def update_yaml_checksum(component_data, checksums, version):
     placeholder_checksum = component_data['placeholder_checksum']
     checksum_structure = component_data['checksum_structure']
     logging.info(f'Updating {placeholder_checksum} with {checksums}')
-    
     current = checksum_yaml_data[placeholder_checksum]
-
     if checksum_structure == 'simple': 
         # Simple structure (placeholder_checksum -> version -> checksum)
         current[(version)] = checksums[version]
-
     elif checksum_structure == 'os_arch':  
         # OS structure (placeholder_checksum -> os -> arch -> version -> checksum)
         for os_name, arch_dict in checksums.items():
             os_current = current.setdefault(os_name, {})
             for arch, checksum in arch_dict.items():
                 os_current[arch] = {(version): checksum, **os_current.get(arch, {})}
-
     elif checksum_structure == 'arch':
         # Arch structure (placeholder_checksum -> arch -> version -> checksum)
         for arch, checksum in checksums.items():
@@ -334,8 +336,9 @@ def process_version_string(component, version):
         if version.startswith('v'):
             version = version[1:]
             return version
-    if component in ['gvisor_containerd_shim', 'gvisor_runsc']:
-        version = re.sub(r'^release-([0-9]+).*', r'\1', version)        
+    match = re.search(r'release-(\d{8})', version) # gvisor
+    if match:
+        version = match.group(1)
     return version
 
 def process_component(component, component_data, session):
@@ -399,17 +402,21 @@ def process_component(component, component_data, session, version_diff):
         return
 
     # Get latest version
-    if component in ['gvisor_runsc', 'gvisor_containerd_shim']:
+    if component_data['release_type'] == 'tag':
+        logging.info('here 1')
         release = get_release_tag(component, component_data, session)
         if release:
             latest_version = release.get('name')
     else:
+        logging.info('here 2')
         release = get_release(component, component_data, session)
-        latest_version = release.get('tagName')
+        latest_version = release.get('tagName')    
 
     if not latest_version:
         logging.info(f'Stop processing component {component}, latest version unknown.')
         return
+    
+    
     latest_version = process_version_string(component, latest_version)
 
     if current_version == latest_version:
@@ -421,6 +428,9 @@ def process_component(component, component_data, session, version_diff):
         logging.info(f'Component {component} version discrepancy, current={current_version}, latest={latest_version}')
     
     if args.ci_check:
+        release['component'] = component
+        release['owner'] = component_data['owner']
+        release['repo'] = component_data['repo']
         if (current_version != latest_version):
             version_diff[component] = {
                 "current_version": current_version,
@@ -444,7 +454,11 @@ def main(loglevel, component, max_workers):
     checksum_yaml_data = load_yaml_file(path_checksum)
     download_yaml_data = load_yaml_file(path_download)
     if not (main_yaml_data and checksum_yaml_data and download_yaml_data):
-        logging.error(f'Failed to open required yaml file, exiting')
+        logging.error(f"""Failed to open required yaml file
+                      Current working directory is {pwd}
+                      Run script from repo root, e.g.
+                      python scripts/dependency_updater.py
+                      Exiting...""")
         return
 
     if args.ci_check:
