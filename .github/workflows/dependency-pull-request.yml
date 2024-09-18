@@ -38,7 +38,7 @@ jobs:
       - name: Update component version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python update_version.py --component ${{ github.event.inputs.component }}
+        run: python dependency_updater.py --component ${{ github.event.inputs.component }}
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
@@ -50,3 +50,6 @@ jobs:
             ${{ github.event.inputs.component_release }}
             There is no info
           base: main
+          labels: |
+            dependencies
+            release-note-non

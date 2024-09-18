@@ -12,7 +12,7 @@ from ruamel.yaml import YAML
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
-from config import component_info, architectures, oses, path_download, path_checksum, path_main, path_versiong_diff
+from dependency_updater_config import component_info, architectures, oses, path_download, path_checksum, path_main, path_versiong_diff
 
 yaml = YAML()
 yaml.explicit_start = True
