@@ -409,12 +409,13 @@ def process_component(component, component_data, session, version_diff):
     else:
         logging.info(f'Component {component} version discrepancy, current={current_version}, latest={latest_version}')
     
-    if args.ci_check and (current_version != latest_version):
-        version_diff[component] = {
-            "current_version": current_version,
-            "latest_version": latest_version,
-            "component_release": release
-        }
+    if args.ci_check:
+        if (current_version != latest_version):
+            version_diff[component] = {
+                "current_version": current_version,
+                "latest_version": latest_version,
+                "component_release": release
+            }
         return
     
     checksums = get_checksums(component, component_data, latest_version, session)
