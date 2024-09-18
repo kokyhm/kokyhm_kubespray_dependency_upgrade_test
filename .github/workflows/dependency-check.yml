@@ -40,11 +40,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version_diff=$(cat version_diff.json)
+          count=0  # Initialize a counter
           for row in $(echo "${version_diff}" | jq -r 'to_entries[] | @base64'); do
             _jq() {
               echo ${row} | base64 --decode | jq -r ${1}
             }
-            
+
             component=$(_jq '.key')
             current_version=$(_jq '.value.current_version')
             latest_version=$(_jq '.value.latest_version')
@@ -58,4 +59,13 @@ jobs:
               -f current_version=$current_version \
               -f latest_version=$latest_version \
               -f release="$release"
+            
+            count=$((count + 1))
+
+            # Stop after triggering 30 actions
+            if [ "$count" -ge 30 ]; then
+              echo "Reached the limit of 30 triggered actions."
+              break
+            fi
           done
+

@@ -12,7 +12,7 @@ on:
       latest_version:
         description: "Latest version of the component"
         required: true
-      component_release:
+      release:
         description: "Component release information"
         required: true
 
