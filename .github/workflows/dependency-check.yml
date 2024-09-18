@@ -1,4 +1,4 @@
-name: Update Versions
+name: Check components version
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
 
       - name: Run version check
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python update_version.py --ci-check
 
       - name: Parse version_diff.json
@@ -32,6 +32,8 @@ jobs:
           echo "::set-output name=version_diff::$(cat version_diff.json)"
 
       - name: Trigger subsequent action for each component
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version_diff=$(cat version_diff.json)
           for row in $(echo "${version_diff}" | jq -r 'to_entries[] | @base64'); do

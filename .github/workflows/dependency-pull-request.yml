@@ -1,4 +1,4 @@
-name: Create Pull Request for Component Update
+name: Create PR for dependency bump
 
 on:
   workflow_dispatch:

@@ -25,7 +25,7 @@ cache_expiry_seconds = 86400
 os.makedirs(cache_dir, exist_ok=True)
 
 GITHUB_API_URL = "https://api.github.com/graphql"
-GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+GH_TOKEN = os.getenv('GITHUB_TOKEN')
 
 def setup_logging(loglevel):
     log_format = '%(asctime)s - %(levelname)s - [%(threadName)s] - %(message)s'
@@ -94,7 +94,7 @@ def get_release(component, component_data, session):
             """ % (component_data['owner'], component_data['repo'])
 
             headers = {
-                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Authorization": f"Bearer {GH_TOKEN}",
                 "Content-Type": "application/json"
             }
 
@@ -149,7 +149,7 @@ def get_release_tag(component, component_data, session):
             """ % (component_data['owner'], component_data['repo'])
 
             headers = {
-                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Authorization": f"Bearer {GH_TOKEN}",
                 "Content-Type": "application/json"
             }
 
@@ -428,8 +428,8 @@ def main(loglevel, component, max_workers):
     
     session = get_session_with_retries()
 
-    GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
-    if not GITHUB_TOKEN:
+    GH_TOKEN = os.getenv('GITHUB_TOKEN')
+    if not GH_TOKEN:
         logging.error("GITHUB_TOKEN is not set. You can set it via 'export GITHUB_TOKEN=<your-token>'. Exiting.")
         sys.exit(1)
 
