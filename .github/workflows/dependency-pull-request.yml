@@ -42,6 +42,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/dependency_updater.py --ci-check
+      
+      - name: Check if file exists
+        shell: bash
+        run: ls -al
 
       - name: Generate PR body with links
         id: generate_pr_body
