@@ -1,4 +1,4 @@
-name: Create PR for dependency bump
+name: Dependency create bump PR
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
 
       - name: Update component version
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python update_version.py --component ${{ github.event.inputs.component }}
 
       - name: Create Pull Request

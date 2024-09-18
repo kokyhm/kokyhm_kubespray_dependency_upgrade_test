@@ -1,4 +1,4 @@
-name: Check components version
+name: Dependency check version
 
 on:
   workflow_dispatch:

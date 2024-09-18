@@ -27,7 +27,7 @@ os.makedirs(cache_dir, exist_ok=True)
 GITHUB_API_URL = "https://api.github.com/graphql"
 GH_TOKEN = os.getenv('GH_TOKEN')
 if not GH_TOKEN:
-    logging.error("GH_TOKEN is not set. You can set it via 'export GITHUB_TOKEN=<your-token>'. Exiting.")
+    logging.error("GH_TOKEN is not set. You can set it via 'export GH_TOKEN=<your-token>'. Exiting.")
     sys.exit(1)
 
 def setup_logging(loglevel):
