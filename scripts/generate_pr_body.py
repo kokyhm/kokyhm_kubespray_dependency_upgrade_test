@@ -100,7 +100,7 @@ def main(component):
         with open('version_diff.json') as f:
             data = json.load(f)[component]
     except Exception:
-        return "err no info"
+        print('exception')
     pr_body = "Starting from here"
     release = data['release']
     owner = release['owner']
