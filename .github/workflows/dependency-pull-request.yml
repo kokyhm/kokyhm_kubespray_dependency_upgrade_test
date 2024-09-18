@@ -41,11 +41,11 @@ jobs:
       - name: Run version check to create version_diff.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/dependency_updater.py --ci-check
+        run: python scripts/dependency_updater.py --ci-check --component ${{ github.event.inputs.component }}
       
       - name: Check if file exists
         shell: bash
-        run: cat version_diff.json
+        run: ls version_diff.json
 
       - name: Generate PR body with links
         id: generate_pr_body
