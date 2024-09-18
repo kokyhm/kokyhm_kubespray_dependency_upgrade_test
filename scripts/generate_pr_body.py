@@ -139,7 +139,6 @@ def main(component):
         commits = get_commits(name, release)
         if commits:
             pr_body += commits
-    print(pr_body.strip())
     return pr_body.strip()
 
 if __name__ == '__main__':
