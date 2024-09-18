@@ -11,7 +11,7 @@ from ruamel.yaml import YAML
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
-from config import component_info, architectures, oses, path_download, path_checksum, path_main
+from config import component_info, architectures, oses, path_download, path_checksum, path_main, path_versiong_diff
 
 yaml = YAML()
 yaml.explicit_start = True
@@ -19,19 +19,19 @@ yaml.preserve_quotes = True
 yaml.width = 4096
 yaml.indent(mapping=2, sequence=4, offset=2)
 
-main_yaml_data = {}
-checksum_yaml_data = {}
-download_yaml_data = {}
-
 cache_dir = './cache'
 cache_expiry_seconds = 86400
 os.makedirs(cache_dir, exist_ok=True)
 
+GITHUB_API_URL = "https://api.github.com/graphql"
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+
 def setup_logging(loglevel):
+    log_format = '%(asctime)s - %(levelname)s - [%(threadName)s] - %(message)s'
     numeric_level = getattr(logging, loglevel.upper(), None)
     if not isinstance(numeric_level, int):
         raise ValueError(f'Invalid log level: {loglevel}')
-    logging.basicConfig(level=numeric_level, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(level=numeric_level, format=log_format)
 
 def get_session_with_retries():
     session = requests.Session()
@@ -62,49 +62,107 @@ def save_to_cache(component, data):
         json.dump(data, f, indent=2)
     logging.info(f'Cached release info for {component}')
 
-def get_current_version(component_data):
+def get_current_version(component, component_data):
     kube_major_version = component_data['kube_major_version']
     placeholder_version = [kube_major_version if item == 'kube_major_version' else item for item in component_data['placeholder_version']]
-
-    current_version = download_yaml_data
+    if component.startswith('kube'):
+        current_version = main_yaml_data
+    else:    
+        current_version = download_yaml_data
     for key in placeholder_version:
         current_version = current_version.get(key)
-
     return current_version
 
-def get_latest_version(component, component_data, session):
-    release_info = load_from_cache(component)
-    if not release_info:    
+def get_release(component, component_data, session):
+    release = load_from_cache(component)
+    if not release:    
         try:
-            response = session.get(component_data['url_release'], timeout=10)
+            query = """
+                query {
+                    repository(owner: "%s", name: "%s") {
+                        releases(first: 10, orderBy: {field: CREATED_AT, direction: DESC}) {
+                            nodes {
+                                tagName
+                                url
+                                description
+                                isLatest
+                            }
+                        }
+                    }
+                }
+            """ % (component_data['owner'], component_data['repo'])
+
+            headers = {
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Content-Type": "application/json"
+            }
+
+            response = session.post(GITHUB_API_URL, json={'query': query}, headers=headers)
             response.raise_for_status()
-            release_info = response.json()
-            save_to_cache(component, release_info)
-        except json.JSONDecodeError: # handle kube* components returning version as a string
-            release_info = {'tag_name': response.text}
-        except Exception as e:
-            logging.error(f'Error fetching latest version for {component}: {e}')
+
+            data = response.json()
+
+            # Look for the release marked as latest
+            for release_node in data['data']['repository']['releases']['nodes']:
+                if release_node['isLatest']:
+                    release = release_node
+                    save_to_cache(component, release)
+                    logging.info(f"Found latest release: {release['tagName']}")
+                    return release
+
+            logging.warning(f"No latest release found for {component}")
             return None
-    latest_version = None
-    try:
-        # Generic
-        if isinstance(release_info, dict):
-            latest_version = release_info.get('tag_name', None)
-        # Gvisor
-        elif isinstance(release_info, list):
-            latest_version = release_info[0]['name']
-    except:
-        latest_version = None
+        except Exception as e:
+            logging.error(f'Error fetching latest release for {component}: {e}')
+            return None
+    return release
 
-    # Extract version for Gvisor
-    if isinstance(latest_version, str) and component in ['gvisor_containerd_shim', 'gvisor_runsc']:
-        latest_version = re.sub(r'^release-([0-9]+).*', r'\1', latest_version)
+def get_release_tag(component, component_data, session):
+    tag = load_from_cache(component)
+    if not tag:
+        try:
+            query = """
+                query {
+                repository(owner: "%s", name: "%s") {
+                    refs(refPrefix: "refs/tags/", first: 1, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
+                    edges {
+                        node {
+                        name
+                        target {
+                            ... on Commit {
+                            oid
+                            message
+                            committedDate
+                            author {
+                                name
+                                email
+                                date
+                            }
+                            }
+                        }
+                        }
+                    }
+                    }
+                }
+                }
+            """ % (component_data['owner'], component_data['repo'])
 
-    # Strip v for specific components
-    if isinstance(latest_version, str) and component in ['youki', 'nerdctl', 'cri_dockerd', 'containerd']:
-        latest_version = latest_version.lstrip('v')
+            headers = {
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Content-Type": "application/json"
+            }
 
-    return latest_version
+            response = session.post(GITHUB_API_URL, json={'query': query}, headers=headers)
+            response.raise_for_status()
+
+            data = response.json()
+            tag = data['data']['repository']['refs']['edges'][0]['node']
+            save_to_cache(component, tag)
+            return tag
+        except Exception as e:
+            logging.error(f'Error fetching tags for {component}: {e}')
+            return None
+    return tag
 
 def calculate_checksum(cachefile, url_download, arch):
     if url_download.endswith('.sha256sum'):
@@ -233,38 +291,136 @@ def update_yaml_version(component, component_data, version):
             current.clear()
             current.update(new_entry)
 
+def create_json_file(file_path):
+    new_data = {}
+    try:
+        with open(file_path, 'w') as f:
+            json.dump(new_data, f, indent=2)
+        return new_data
+    except Exception as e:
+        logging.error(f'Failed to create {file_path}: {e}')
+        return None
+
+def save_json_file(file_path, data):
+    try:
+        with open(file_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception as e:
+        logging.error(f"Failed to save {file_path}: {e}")
+        return False
+
 def load_yaml_file(yaml_file):
     try:
         with open(yaml_file, 'r') as f:
             return yaml.load(f)
-    except FileNotFoundError:
-        logging.warning(f'YAML file {yaml_file} not found.')
+    except Exception as e:
+        logging.error(f'Failed to load {yaml_file}: {e}')
         return {}
 
 def save_yaml_file(yaml_file, data):
-    with open(yaml_file, 'w') as f:
-        yaml.dump(data, f)
+    try:
+        with open(yaml_file, 'w') as f:
+            yaml.dump(data, f)
+    except Exception as e:
+        logging.error(f'Failed to save {yaml_file}: {e}')
+        return False
 
 def process_component(component, component_data, session):
     logging.info(f'Processing component: {component}')
 
     kube_version = main_yaml_data.get('kube_version')
     kube_major_version = '.'.join(kube_version.split('.')[:2])
-    component_data['kube_major_version'] = kube_major_version # needed for the update of nested versions
+    component_data['kube_version'] = kube_version # needed for nested components
+    component_data['kube_major_version'] = kube_major_version # needed for nested components
 
-    current_version = get_current_version(component_data)
-    latest_version = get_latest_version(component, component_data, session)
-
-    if args.skip_if_up_to_date and current_version == latest_version:
-        logging.info(f'Skipping component {component}: current version {current_version} is up-to-date.')
+    # Get current version
+    current_version = get_current_version(component, component_data)
+    if not current_version:
+        logging.info(f'Stop processing component {component}, current version unknown')
         return
+
+    # Get latest version
+    if component in ['gvisor_runsc', 'gvisor_containerd_shim']:
+        tag = get_release_tag(component, component_data, session)
+        if tag:
+            latest_version = tag.get('name')
+            latest_version = re.sub(r'^release-([0-9]+).*', r'\1', latest_version)
+    else:
+        release = get_release(component, component_data, session)
+        latest_version = release.get('tagName')
+        #logging.info(f'Component is {component}, version is {release.get('tagName')}')
+        #logging.info(f'Component is {component}, url is {release.get('url')}')
+        #logging.info(f'Description is {release.get('description')}')
+    if not latest_version:
+        logging.info(f'Stop processing component {component}, latest version unknown.')
+        return
+
+    if current_version == latest_version:
+        logging.info(f'Component {component}, version {current_version} is up to date')
+        if args.skip_checksum and current_version == latest_version:
+            logging.info(f'Stop processing component {component} due to flag .')
+            return
+    
+    logging.info(f'Component {component} version discrepancy, current={current_version}, latest={latest_version}')
+    if args.ci_check:
+        
+        return        
     
     if latest_version and not component.startswith("kube"):
         update_yaml_version(component, component_data, latest_version)
         checksums = get_checksums(component, component_data, latest_version, session)
         update_yaml_checksum(component_data, checksums, latest_version)
 
-def main(loglevel, maxworkers, component):
+def process_component(component, component_data, session, version_diff):
+    logging.info(f'Processing component: {component}')
+
+    kube_version = main_yaml_data.get('kube_version')
+    kube_major_version = '.'.join(kube_version.split('.')[:2])
+    component_data['kube_version'] = kube_version  # needed for nested components
+    component_data['kube_major_version'] = kube_major_version  # needed for nested components
+
+    # Get current version
+    current_version = get_current_version(component, component_data)
+    if not current_version:
+        logging.info(f'Stop processing component {component}, current version unknown')
+        return
+
+    # Get latest version
+    if component in ['gvisor_runsc', 'gvisor_containerd_shim']:
+        release = get_release_tag(component, component_data, session)
+        if release:
+            latest_version = release.get('name')
+            latest_version = re.sub(r'^release-([0-9]+).*', r'\1', latest_version)
+    else:
+        release = get_release(component, component_data, session)
+        latest_version = release.get('tagName')
+
+    if not latest_version:
+        logging.info(f'Stop processing component {component}, latest version unknown.')
+        return
+
+    if current_version == latest_version:
+        logging.info(f'Component {component}, version {current_version} is up to date')
+        if args.skip_checksum and current_version == latest_version:
+            logging.info(f'Stop processing component {component} due to flag.')
+            return
+    else:
+        logging.info(f'Component {component} version discrepancy, current={current_version}, latest={latest_version}')
+    
+    if args.ci_check and (current_version != latest_version):
+        version_diff[component] = {
+            "current_version": current_version,
+            "latest_version": latest_version,
+            "component_release": release
+        }
+    
+    if latest_version and not args.ci_check and not component.startswith("kube"):
+        update_yaml_version(component, component_data, latest_version)
+        checksums = get_checksums(component, component_data, latest_version, session)
+        update_yaml_checksum(component_data, checksums, latest_version)
+
+def main(loglevel, component, max_workers):
     setup_logging(loglevel)
     
     session = get_session_with_retries()
@@ -273,33 +429,48 @@ def main(loglevel, maxworkers, component):
     main_yaml_data = load_yaml_file(path_main)
     checksum_yaml_data = load_yaml_file(path_checksum)
     download_yaml_data = load_yaml_file(path_download)
+    if not (main_yaml_data and checksum_yaml_data and download_yaml_data):
+        logging.error(f'Failed to open required yaml file, exiting')
+        return
+
+    if args.ci_check:
+        version_diff = create_json_file(path_versiong_diff)
+        if version_diff is None:
+            logging.error(f'Failed to create version_diff.json file ')
+            return
 
     if component != 'all':
         if component in component_info:
             logging.info(f'Processing specified component: {component}')
-            process_component(component, component_info[component], session)
+            process_component(component, component_info[component], session, version_diff)
         else:
             logging.error(f'Component {component} not found in config.')
             return
     else:
-        with ThreadPoolExecutor(max_workers = maxworkers) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
             logging.info(f'Running with {executor._max_workers} executors')
             for component, component_data in component_info.items():
-                futures.append(executor.submit(process_component, component, component_data, session))
+                futures.append(executor.submit(process_component, component, component_data, session, version_diff))
             for future in futures:
                 future.result()
+
+    if args.ci_check:
+        save_json_file(path_versiong_diff, version_diff)
 
     save_yaml_file(path_checksum, checksum_yaml_data)
     save_yaml_file(path_download, download_yaml_data)
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Component version updater with logging and concurrency.')
+    parser = argparse.ArgumentParser(description='Kubespray version and checksum updater for dependencies')
     parser.add_argument('--loglevel', default='INFO', help='Set the log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
-    parser.add_argument('--maxworkers', type=int, default=4, help='Maximum number of concurrent workers, use with caution')
-    parser.add_argument('--skip-if-up-to-date', action='store_true', help='Skip processing component if the current version is up to date')
     parser.add_argument('--component', default='all', help='Specify a component to process, default is all components')
+    parser.add_argument('--max-workers', type=int, default=4, help='Maximum number of concurrent workers, use with caution(sometimes less is more)')
+    parser.add_argument('--skip-checksum', action='store_true', help='Skip checksum if the current version is up to date')
+    parser.add_argument('--ci-check', action='store_true', help='Check versions, store discrepancies in version_diff.json')
+    
 
     args = parser.parse_args()
 
-    main(args.loglevel, args.maxworkers, args.component)
+    main(args.loglevel, args.component, args.max_workers)
