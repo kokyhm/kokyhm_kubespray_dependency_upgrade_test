@@ -24,7 +24,7 @@ jobs:
       - name: Run version check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python dependency_updater.py --ci-check
+        run: python scripts/dependency_updater.py --ci-check
 
       - name: Parse version_diff.json
         id: parse_version_diff
