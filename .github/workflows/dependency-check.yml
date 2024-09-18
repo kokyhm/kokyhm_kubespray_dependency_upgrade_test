@@ -48,7 +48,7 @@ jobs:
             component=$(_jq '.key')
             current_version=$(_jq '.value.current_version')
             latest_version=$(_jq '.value.latest_version')
-            component_release=$(_jq '.value.component_release')
+            release=$(_jq '.value.release')
 
             echo "Triggering update for $component from $current_version to $latest_version"
             
@@ -57,5 +57,5 @@ jobs:
               -f component=$component \
               -f current_version=$current_version \
               -f latest_version=$latest_version \
-              -f component_release="$component_release"
+              -f release="$release"
           done

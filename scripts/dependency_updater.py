@@ -364,9 +364,7 @@ def process_component(component, component_data, session):
     else:
         release = get_release(component, component_data, session)
         latest_version = release.get('tagName')
-        #logging.info(f'Component is {component}, version is {release.get('tagName')}')
-        #logging.info(f'Component is {component}, url is {release.get('url')}')
-        #logging.info(f'Description is {release.get('description')}')
+
     if not latest_version:
         logging.info(f'Stop processing component {component}, latest version unknown.')
         return
@@ -433,7 +431,7 @@ def process_component(component, component_data, session, version_diff):
             version_diff[component] = {
                 "current_version": current_version,
                 "latest_version": latest_version,
-                "component_release": release
+                "release": release
             }
         return
     
