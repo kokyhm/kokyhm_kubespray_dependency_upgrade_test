@@ -41,16 +41,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/dependency_updater.py --component ${{ github.event.inputs.component }}
 
+      - name: Run version check to create version_diff.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/dependency_updater.py --ci-check
+
       - name: Generate PR body with links
         id: generate_pr_body
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python scripts/generate_pr_body.py --component ${{ github.event.inputs.component }} \
-                --current_version ${{ github.event.inputs.current_version }} \
-                --latest_version ${{ github.event.inputs.latest_version }} \
-                --release "${{ github.event.inputs.release }}"
-
+          python scripts/generate_pr_body.py --component ${{ github.event.inputs.component }}
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5

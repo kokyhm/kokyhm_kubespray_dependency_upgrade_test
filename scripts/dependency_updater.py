@@ -94,6 +94,7 @@ def get_release(component, component_data, session, number_of_releases=10):
                                 tagName
                                 url
                                 description
+                                publishedAt
                                 isLatest
                             }
                         }
@@ -136,18 +137,6 @@ def get_release_tag(component, component_data, session):
                     edges {
                         node {
                         name
-                        target {
-                            ... on Commit {
-                            oid
-                            message
-                            committedDate
-                            author {
-                                name
-                                email
-                                date
-                            }
-                            }
-                        }
                         }
                     }
                     }
@@ -430,9 +419,9 @@ def process_component(component, component_data, session, version_diff):
         release['release_type'] = component_data['release_type']
         if (current_version != latest_version):
             version_diff[component] = {
-                "current_version": current_version,
-                "latest_version": latest_version,
-                "release": release
+                "current_version" : current_version, # needed for dependecy-check
+                "latest_version" : latest_version, # needed for dependecy-check
+                "release" : release # needed for generate_pr_body
             }
         return
     
