@@ -45,8 +45,8 @@ jobs:
       
       - name: Check if file exists
         shell: bash
-        run: ls version_diff.json
-
+        run: cat version_diff.json
+        
       - name: Generate PR body with links
         id: generate_pr_body
         env:

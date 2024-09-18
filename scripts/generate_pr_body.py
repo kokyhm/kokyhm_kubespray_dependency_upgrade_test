@@ -98,7 +98,9 @@ def link_pull_requests(description, repo_url):
 def main(component):
     try:
         with open('version_diff.json') as f:
-            data = json.load(f)[component]
+            data = json.load(f)
+            print(f"Available keys in version_diff.json: {list(data.keys())}")
+            data = data[component]
     except Exception as e:
         print(f'Error reading version_diff.json or component not found: {e}')
         sys.exit(1)  # Exit if an error occurs
