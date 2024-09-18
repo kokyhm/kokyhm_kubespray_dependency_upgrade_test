@@ -111,7 +111,6 @@ def get_release(component, component_data, session):
                 if release_node['isLatest']:
                     release = release_node
                     save_to_cache(component, release)
-                    logging.info(f"Found latest release: {release['tagName']}")
                     return release
 
             logging.warning(f"No latest release found for {component}")

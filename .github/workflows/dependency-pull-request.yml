@@ -52,4 +52,4 @@ jobs:
           base: main
           labels: |
             dependencies
-            release-note-non
+            release-note-none
