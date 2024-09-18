@@ -101,6 +101,7 @@ def main(component):
             data = json.load(f)[component]
     except Exception:
         return "err no info"
+    pr_body = "Starting from here"
     release = data['release']
     owner = release['owner']
     repo = release['repo']
