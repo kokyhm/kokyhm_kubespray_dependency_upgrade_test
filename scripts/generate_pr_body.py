@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import argparse
 import requests
 from dependency_updater_config import component_info
@@ -137,7 +138,7 @@ if __name__ == '__main__':
     parser.add_argument('--current_version', required=True, help='Specify the current version')
     parser.add_argument('--latest_version', required=True, help='Specify the latest version')
     parser.add_argument('--release', required=True, help='Release json from Github GraphQL')
-
     args = parser.parse_args()
+    release = json.loads(args.release)
 
-    main(args.component, args.current_version, args.latest_version, args.release)
+    main(args.component, args.current_version, args.latest_version, release)
