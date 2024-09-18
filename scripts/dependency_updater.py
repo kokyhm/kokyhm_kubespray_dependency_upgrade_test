@@ -330,50 +330,6 @@ def process_version_string(component, version):
         version = match.group(1)
     return version
 
-def process_component(component, component_data, session):
-    logging.info(f'Processing component: {component}')
-
-    kube_version = main_yaml_data.get('kube_version')
-    kube_major_version = '.'.join(kube_version.split('.')[:2])
-    component_data['kube_version'] = kube_version # needed for nested components
-    component_data['kube_major_version'] = kube_major_version # needed for nested components
-
-    # Get current version
-    current_version = get_current_version(component, component_data)
-    if not current_version:
-        logging.info(f'Stop processing component {component}, current version unknown')
-        return
-
-    # Get latest version
-    if component in ['gvisor_runsc', 'gvisor_containerd_shim']:
-        tag = get_release_tag(component, component_data, session)
-        if tag:
-            latest_version = tag.get('name')
-            latest_version = re.sub(r'^release-([0-9]+).*', r'\1', latest_version)
-    else:
-        release = get_release(component, component_data, session)
-        latest_version = release.get('tagName')
-
-    if not latest_version:
-        logging.info(f'Stop processing component {component}, latest version unknown.')
-        return
-
-    if current_version == latest_version:
-        logging.info(f'Component {component}, version {current_version} is up to date')
-        if args.skip_checksum and current_version == latest_version:
-            logging.info(f'Stop processing component {component} due to flag .')
-            return
-    
-    logging.info(f'Component {component} version discrepancy, current={current_version}, latest={latest_version}')
-    if args.ci_check:
-        
-        return        
-    
-    if latest_version and not component.startswith("kube"):
-        update_yaml_version(component, component_data, latest_version)
-        checksums = get_checksums(component, component_data, latest_version, session)
-        update_yaml_checksum(component_data, checksums, latest_version)
-
 def process_component(component, component_data, session, version_diff):
     logging.info(f'Processing component: {component}')
 
