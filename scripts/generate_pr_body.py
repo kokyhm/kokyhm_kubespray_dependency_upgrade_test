@@ -99,8 +99,9 @@ def main(component):
     try:
         with open('version_diff.json') as f:
             data = json.load(f)[component]
-    except Exception:
-        print('exception')
+    except Exception as e:
+        print(f'Error reading version_diff.json or component not found: {e}')
+        sys.exit(1)  # Exit if an error occurs
     pr_body = "Starting from here"
     release = data['release']
     owner = release['owner']
