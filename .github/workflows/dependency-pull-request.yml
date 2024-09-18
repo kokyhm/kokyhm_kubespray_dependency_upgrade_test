@@ -1,0 +1,49 @@
+name: Create Pull Request for Component Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Component to update"
+        required: true
+      current_version:
+        description: "Current version of the component"
+        required: true
+      latest_version:
+        description: "Latest version of the component"
+        required: true
+      component_release:
+        description: "Component release information"
+        required: false
+
+jobs:
+  create-pull-request:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Update component version
+        run: python update_version.py --component ${{ github.event.inputs.component }}
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          branch: "dependency-${{ github.event.inputs.component }}-${{ github.event.inputs.latest_version }}"
+          commit-message: "Bump ${{ github.event.inputs.component }} from ${{ github.event.inputs.current_version }} to ${{ github.event.inputs.latest_version }}"
+          title: "Bump ${{ github.event.inputs.component }} from ${{ github.event.inputs.current_version }} to ${{ github.event.inputs.latest_version }}"
+          body: |
+            ${{ github.event.inputs.component_release }}
+            There is no info
+          base: main

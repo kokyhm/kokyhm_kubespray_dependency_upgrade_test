@@ -402,7 +402,7 @@ def process_component(component, component_data, session, version_diff):
 
     if current_version == latest_version:
         logging.info(f'Component {component}, version {current_version} is up to date')
-        if args.skip_checksum and current_version == latest_version:
+        if args.skip_checksum and (current_version == latest_version):
             logging.info(f'Stop processing component {component} due to flag.')
             return
     else:
@@ -414,11 +414,12 @@ def process_component(component, component_data, session, version_diff):
             "latest_version": latest_version,
             "component_release": release
         }
+        return
     
-    if latest_version and not args.ci_check and not component.startswith("kube"):
+    checksums = get_checksums(component, component_data, latest_version, session)
+    update_yaml_checksum(component_data, checksums, latest_version)
+    if component not in ['crictl', 'crio', 'kubeadm', 'kubectl', 'kubelet']: # kubernetes dependent components
         update_yaml_version(component, component_data, latest_version)
-        checksums = get_checksums(component, component_data, latest_version, session)
-        update_yaml_checksum(component_data, checksums, latest_version)
 
 def main(loglevel, component, max_workers):
     setup_logging(loglevel)
@@ -438,6 +439,8 @@ def main(loglevel, component, max_workers):
         if version_diff is None:
             logging.error(f'Failed to create version_diff.json file ')
             return
+    else:
+        version_diff = {}
 
     if component != 'all':
         if component in component_info:
