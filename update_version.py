@@ -25,7 +25,10 @@ cache_expiry_seconds = 86400
 os.makedirs(cache_dir, exist_ok=True)
 
 GITHUB_API_URL = "https://api.github.com/graphql"
-GH_TOKEN = os.getenv('GITHUB_TOKEN')
+GH_TOKEN = os.getenv('GH_TOKEN')
+if not GH_TOKEN:
+    logging.error("GH_TOKEN is not set. You can set it via 'export GITHUB_TOKEN=<your-token>'. Exiting.")
+    sys.exit(1)
 
 def setup_logging(loglevel):
     log_format = '%(asctime)s - %(levelname)s - [%(threadName)s] - %(message)s'
@@ -427,11 +430,6 @@ def main(loglevel, component, max_workers):
     setup_logging(loglevel)
     
     session = get_session_with_retries()
-
-    GH_TOKEN = os.getenv('GH_TOKEN')
-    if not GH_TOKEN:
-        logging.error("GH_TOKEN is not set. You can set it via 'export GITHUB_TOKEN=<your-token>'. Exiting.")
-        sys.exit(1)
 
     global main_yaml_data, checksum_yaml_data, download_yaml_data
     main_yaml_data = load_yaml_file(path_main)
