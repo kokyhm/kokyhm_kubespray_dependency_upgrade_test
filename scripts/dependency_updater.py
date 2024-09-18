@@ -427,6 +427,7 @@ def process_component(component, component_data, session, version_diff):
         release['component'] = component
         release['owner'] = component_data['owner']
         release['repo'] = component_data['repo']
+        release['release_type'] = component_data['release_type']
         if (current_version != latest_version):
             version_diff[component] = {
                 "current_version": current_version,

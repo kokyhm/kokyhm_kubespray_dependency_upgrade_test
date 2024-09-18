@@ -16,10 +16,10 @@ def process_version_string(component, version):
         version = match.group(1)
     return version
 
-def get_commits(component, component_data, repo_version, number_of_commits=5):
-    owner = component_data['owner']
-    repo = component_data['repo']
-    release_type = component_info[component]['release_type']
+def get_commits(release, repo_version, number_of_commits=5):
+    owner = release['owner']
+    repo = release['repo']
+    release_type = release['release_type']
     if release_type == 'tag':
         query = """
         {
@@ -93,10 +93,9 @@ def get_commits(component, component_data, repo_version, number_of_commits=5):
 def link_pull_requests(description, repo_url):
     return re.sub(r'\(#(\d+)\)', rf'([#\1]({repo_url}/pull/\1))', description)
 
-def main(component, component_data, release, ):
-    repo_url = "https://github.com/%s/%s" % (component_data['owner'], component_data['repo'])
+def main(component, current_version, latest_version, release):
+    repo_url = "https://github.com/%s/%s" % (release['owner'], release['repo'])
     if component in ['gvisor_containerd_shim','gvisor_runsc']:
-        commits = get_commits(component, component_data, repo_version)
         name = release.get('name')
         repo_version = release.get('repo_version', 'release-20240826.0')
         url = "https://github.com/google/gvisor/releases/tag/%s" % repo_version
@@ -107,10 +106,10 @@ def main(component, component_data, release, ):
 
         **
         """
+        commits = get_commits(name, release)
         if commits:
             pr_body += commits
     else:
-        commits = get_commits(component, component_data, release.get('tagName'))
         name = release.get('tagName')
         tag_name = release.get('tagName')
         published_at = release.get('publishedAt')
@@ -127,6 +126,7 @@ def main(component, component_data, release, ):
         #### Description:
         {description}
         """
+        commits = get_commits(name, release)
         if commits:
             pr_body += commits
     return pr_body.strip()
@@ -140,4 +140,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    main(args.component, args.current_version, args.max_latest_version, args.release)
+    main(args.component, args.current_version, args.latest_version, args.release)
