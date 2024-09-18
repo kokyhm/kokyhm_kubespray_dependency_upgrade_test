@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import logging
 import requests
 import time
@@ -425,6 +426,11 @@ def main(loglevel, component, max_workers):
     setup_logging(loglevel)
     
     session = get_session_with_retries()
+
+    GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+    if not GITHUB_TOKEN:
+        logging.error("GITHUB_TOKEN is not set. You can set it via 'export GITHUB_TOKEN=<your-token>'. Exiting.")
+        sys.exit(1)
 
     global main_yaml_data, checksum_yaml_data, download_yaml_data
     main_yaml_data = load_yaml_file(path_main)
