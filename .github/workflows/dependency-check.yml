@@ -55,10 +55,7 @@ jobs:
             
             gh workflow run dependency-pull-request.yml \
               --ref main \
-              -f component=$component \
-              -f current_version=$current_version \
-              -f latest_version=$latest_version \
-              -f release="$release"
+              -f component=$component
             
             count=$((count + 1))
 
