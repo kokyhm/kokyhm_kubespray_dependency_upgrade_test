@@ -12,7 +12,7 @@ from ruamel.yaml import YAML
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
-from dependency_updater_config import component_info, architectures, oses, path_download, path_checksum, path_main, path_versiong_diff
+from dependency_updater_config import component_info, architectures, oses, path_download, path_checksum, path_main, path_version_diff
 
 
 yaml = YAML()
@@ -454,15 +454,11 @@ def main(loglevel, component, max_workers):
     checksum_yaml_data = load_yaml_file(path_checksum)
     download_yaml_data = load_yaml_file(path_download)
     if not (main_yaml_data and checksum_yaml_data and download_yaml_data):
-        logging.error(f"""Failed to open required yaml file
-                      Current working directory is {pwd}
-                      Run script from repo root, e.g.
-                      python scripts/dependency_updater.py
-                      Exiting...""")
+        logging.error(f"Failed to open required yaml file, current working directory is {pwd}. Exiting...")
         return
 
     if args.ci_check:
-        version_diff = create_json_file(path_versiong_diff)
+        version_diff = create_json_file(path_version_diff)
         if version_diff is None:
             logging.error(f'Failed to create version_diff.json file ')
             return
@@ -486,7 +482,7 @@ def main(loglevel, component, max_workers):
                 future.result()
 
     if args.ci_check:
-        save_json_file(path_versiong_diff, version_diff)
+        save_json_file(path_version_diff, version_diff)
 
     save_yaml_file(path_checksum, checksum_yaml_data)
     save_yaml_file(path_download, download_yaml_data)
