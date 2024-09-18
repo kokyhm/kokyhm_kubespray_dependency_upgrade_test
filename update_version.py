@@ -329,6 +329,15 @@ def save_yaml_file(yaml_file, data):
     except Exception as e:
         logging.error(f'Failed to save {yaml_file}: {e}')
         return False
+    
+def process_version_string(component, version):
+    if component in ['youki', 'nerdctl', 'cri_dockerd', 'containerd']:
+        if version.startswith('v'):
+            version = version[1:]
+            return version
+    if component in ['gvisor_containerd_shim', 'gvisor_runsc']:
+        version = re.sub(r'^release-([0-9]+).*', r'\1', version)        
+    return version
 
 def process_component(component, component_data, session):
     logging.info(f'Processing component: {component}')
@@ -395,7 +404,6 @@ def process_component(component, component_data, session, version_diff):
         release = get_release_tag(component, component_data, session)
         if release:
             latest_version = release.get('name')
-            latest_version = re.sub(r'^release-([0-9]+).*', r'\1', latest_version)
     else:
         release = get_release(component, component_data, session)
         latest_version = release.get('tagName')
@@ -403,6 +411,7 @@ def process_component(component, component_data, session, version_diff):
     if not latest_version:
         logging.info(f'Stop processing component {component}, latest version unknown.')
         return
+    latest_version = process_version_string(component, latest_version)
 
     if current_version == latest_version:
         logging.info(f'Component {component}, version {current_version} is up to date')
