@@ -428,9 +428,9 @@ def main(loglevel, component, max_workers):
     
     session = get_session_with_retries()
 
-    GH_TOKEN = os.getenv('GITHUB_TOKEN')
+    GH_TOKEN = os.getenv('GH_TOKEN')
     if not GH_TOKEN:
-        logging.error("GITHUB_TOKEN is not set. You can set it via 'export GITHUB_TOKEN=<your-token>'. Exiting.")
+        logging.error("GH_TOKEN is not set. You can set it via 'export GITHUB_TOKEN=<your-token>'. Exiting.")
         sys.exit(1)
 
     global main_yaml_data, checksum_yaml_data, download_yaml_data
