@@ -11,7 +11,7 @@ from ruamel.yaml import YAML
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
-from dependency_updater_config import component_info, architectures, oses, path_download, path_checksum, path_main, path_version_diff
+from dependency_config import component_info, architectures, oses, path_download, path_checksum, path_main, path_readme, path_version_diff
 
 
 yaml = YAML()
@@ -250,11 +250,11 @@ def resolve_kube_dependent_component_version(component, component_data, version)
     kube_major_version = component_data['kube_major_version']
     if component in ['crictl', 'crio']:
         try:
-            component_major_version = '.'.join(version.split('.')[:2])
-            if component_major_version == kube_major_version:
+            component_major_minor_version = get_major_minor_version(version)
+            if component_major_minor_version == kube_major_version:
                 resolved_version = kube_major_version
             else:
-                resolved_version = component_major_version
+                resolved_version = component_major_minor_version
         except (IndexError, AttributeError):
             logging.error(f'Error parsing version for {component}: {version}')
             return
@@ -283,6 +283,14 @@ def update_yaml_version(component, component_data, version):
             new_entry = {final_key: version, **current}
             current.clear()
             current.update(new_entry)
+
+def update_readme(component, version):
+    for i, line in enumerate(readme_data):
+        if component in line and re.search(r'v\d+\.\d+\.\d+', line):
+            readme_data[i] = re.sub(r'v\d+\.\d+\.\d+', version, line)
+            logging.info(f"Updated {component} to {version} in README")
+            break
+    return readme_data
 
 def create_json_file(file_path):
     new_data = {}
@@ -319,6 +327,22 @@ def save_yaml_file(yaml_file, data):
         logging.error(f'Failed to save {yaml_file}: {e}')
         return False
     
+def open_readme(path_readme):
+    try:
+        with open(path_readme, 'r') as f:
+            return f.readlines()
+    except Exception as e:
+        logging.error(f'Failed to load {path_readme}: {e}')
+        return False
+
+def save_readme(path_readme):
+    try:
+        with open(path_readme, 'w') as f:
+            f.writelines(readme_data)
+    except Exception as e:
+        logging.error(f'Failed to save {path_readme}: {e}')
+        return False
+    
 def process_version_string(component, version):
     if component in ['youki', 'nerdctl', 'cri_dockerd', 'containerd']:
         if version.startswith('v'):
@@ -329,11 +353,15 @@ def process_version_string(component, version):
         version = match.group(1)
     return version
 
-def process_component(component, component_data, session, version_diff):
+def get_major_minor_version(version):
+    parts = version.split('.')
+    return '.'.join(parts[:2])
+
+def process_component(component, component_data, session):
     logging.info(f'Processing component: {component}')
 
     kube_version = main_yaml_data.get('kube_version')
-    kube_major_version = '.'.join(kube_version.split('.')[:2])
+    kube_major_version = get_major_minor_version(kube_version)
     component_data['kube_version'] = kube_version  # needed for nested components
     component_data['kube_major_version'] = kube_major_version  # needed for nested components
 
@@ -382,19 +410,30 @@ def process_component(component, component_data, session, version_diff):
     
     checksums = get_checksums(component, component_data, latest_version, session)
     update_yaml_checksum(component_data, checksums, latest_version)
-    if component not in ['crictl', 'crio', 'kubeadm', 'kubectl', 'kubelet']: # kubernetes dependent components
+    if component not in ['kubeadm', 'kubectl', 'kubelet']: # kubernetes dependent components
         update_yaml_version(component, component_data, latest_version)
+    if component in ['etcd', 'containerd', 'crio', 'calico', 'cilium', 'krew', 'helm']: # in README
+        if component in ['crio', 'crictl']:
+            component_major_minor_version = get_major_minor_version(latest_version)
+            if component_major_minor_version != kube_major_version: # do not update README
+                return
+            component = component.replace('crio', 'cri-o')
+        elif component == 'containerd':
+            latest_version = f'v{latest_version}'
+        update_readme(component, latest_version)
+
 
 def main(loglevel, component, max_workers):
     setup_logging(loglevel)
-    
     session = get_session_with_retries()
 
-    global main_yaml_data, checksum_yaml_data, download_yaml_data
+    global main_yaml_data, checksum_yaml_data, download_yaml_data, readme_data, version_diff
     main_yaml_data = load_yaml_file(path_main)
     checksum_yaml_data = load_yaml_file(path_checksum)
     download_yaml_data = load_yaml_file(path_download)
-    if not (main_yaml_data and checksum_yaml_data and download_yaml_data):
+    readme_data = open_readme(path_readme)
+
+    if not (main_yaml_data and checksum_yaml_data and download_yaml_data and readme_data):
         logging.error(f'Failed to open required yaml file, current working directory is {pwd}. Exiting...')
         sys.exit(1)
 
@@ -408,7 +447,7 @@ def main(loglevel, component, max_workers):
 
     if component != 'all':
         if component in component_info:
-            process_component(component, component_info[component], session, version_diff)
+            process_component(component, component_info[component], session)
         else:
             logging.error(f'Component {component} not found in config.')
             sys.exit(1)
@@ -417,15 +456,17 @@ def main(loglevel, component, max_workers):
             futures = []
             logging.info(f'Running with {executor._max_workers} executors')
             for component, component_data in component_info.items():
-                futures.append(executor.submit(process_component, component, component_data, session, version_diff))
+                futures.append(executor.submit(process_component, component, component_data, session))
             for future in futures:
                 future.result()
 
     if args.ci_check:
         save_json_file(path_version_diff, version_diff)
+    
 
     save_yaml_file(path_checksum, checksum_yaml_data)
     save_yaml_file(path_download, download_yaml_data)
+    save_readme(path_readme)
 
 
 if __name__ == '__main__':
