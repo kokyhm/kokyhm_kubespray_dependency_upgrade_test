@@ -21,6 +21,7 @@ def process_version_string(component, version):
 def get_commits(version, release, number_of_commits=5):
     owner = release['owner']
     repo = release['repo']
+    repo_url = 'https://github.com/%s/%s' % (owner, repo)
     release_type = release['release_type']
     if release_type == 'tag':
         query = """
@@ -85,6 +86,7 @@ def get_commits(version, release, number_of_commits=5):
                 node = commit['node']
                 short_oid = node['oid'][:7]
                 commit_message = node['message'].split('\n')[0]
+                commit_message = link_pull_requests(commit_message, repo_url)
                 commit_url = node['url']
                 pr_commits += f'- [`{short_oid}`]({commit_url}) {commit_message}  \n'
             pr_commits += '\n</details>'
@@ -117,7 +119,6 @@ def main(component):
 
 **URL**: [Release]({release_url})
 
-**
         """
         commits = get_commits(name, release)
         if commits:
