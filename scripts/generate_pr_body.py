@@ -137,7 +137,7 @@ def main(component):
         pr_body = f"""
 ### {name}
 
-**URL**: [Release]({release_url})
+**URL**: [Release {name}]({release_url})
 
         """
         commits = get_commits(name, release)
