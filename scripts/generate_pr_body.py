@@ -97,12 +97,12 @@ def replace_match(match, repo_url):
 def link_pull_requests(input, repo_url):
     return re.sub(r'(\(?)#(\d+)(\)?)', lambda match: replace_match(match, repo_url), input)
 
-def format_description(description):
+def format_description(description, length=20):
     lines = description.splitlines()
     
-    if len(lines) > 50:
-        first_part = '\n'.join(lines[:50])
-        collapsed_part = '\n'.join(lines[50:])
+    if len(lines) > length:
+        first_part = '\n'.join(lines[:length])
+        collapsed_part = '\n'.join(lines[length:])
         
         formatted_description = f"""{first_part}
 
