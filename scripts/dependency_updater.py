@@ -354,8 +354,10 @@ def process_version_string(component, version):
     return version
 
 def get_major_minor_version(version):
-    parts = version.split('.')
-    return '.'.join(parts[:2])
+    match = re.match(r'^(v\d+)\.(\d+)', version)
+    if match:
+        return f"{match.group(1)}.{match.group(2)}"
+    return version
 
 def process_component(component, component_data, session):
     logging.info(f'Processing component: {component}')
