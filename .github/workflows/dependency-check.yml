@@ -48,7 +48,6 @@ jobs:
             echo "Triggering update for $component from $current_version to $latest_version"
             
             gh workflow run dependency-pull-request.yml \
-              --ref main \
               -f component=$component \
               -f current_version=$current_version \
               -f latest_version=$latest_version \
