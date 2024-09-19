@@ -443,7 +443,7 @@ def main(loglevel, component, max_workers):
 
     if args.ci_check:
         version_diff = create_json_file(path_version_diff)
-        if not version_diff:
+        if version_diff is None:
             logging.error(f'Failed to create version_diff.json file')
             sys.exit(1)
     else:
