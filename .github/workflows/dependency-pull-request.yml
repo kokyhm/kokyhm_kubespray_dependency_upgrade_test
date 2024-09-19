@@ -48,7 +48,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python scripts/generate_pr_body.py --component ${{ github.event.inputs.component }} >> "$GITHUB_OUTPUT"
+          pr_body=$(python scripts/generate_pr_body.py --component ${{ github.event.inputs.component }})
+          echo "pr_body=$pr_body" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
@@ -56,7 +57,7 @@ jobs:
           branch: "dependency-${{ github.event.inputs.component }}-${{ github.event.inputs.latest_version }}"
           commit-message: "Bump ${{ github.event.inputs.component }} from ${{ github.event.inputs.current_version }} to ${{ github.event.inputs.latest_version }}"
           title: "Bump ${{ github.event.inputs.component }} from ${{ github.event.inputs.current_version }} to ${{ github.event.inputs.latest_version }}"
-          body: ${{ steps.generate_pr_body.outputs }}
+          body: ${{ steps.generate_pr_body.outputs.pr_body }}
           base: main
           labels: |
             dependencies
