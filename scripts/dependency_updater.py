@@ -161,7 +161,7 @@ def get_release_tag(component, component_data, session):
             return None
     return tag
 
-def calculate_checksum(cachefile, url_download, arch):
+def calculate_checksum(cachefile, arch, url_download):
     if url_download.endswith('.sha256sum'):
         with open(f'cache/{cachefile}', 'r') as f:
             checksum_line = f.readline().strip()
