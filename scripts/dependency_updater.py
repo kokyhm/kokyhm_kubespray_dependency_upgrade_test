@@ -422,8 +422,6 @@ def process_component(component, component_data, session):
             latest_version = f'v{latest_version}'
         elif component == 'calicoctl':
             component = component.replace('calicoctl', 'calico')
-        elif component == 'ciliumcli':
-            component = component.replace('ciliumcli', 'cilium')
         update_readme(component, latest_version)
 
 
