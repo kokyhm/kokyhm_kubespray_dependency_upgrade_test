@@ -412,7 +412,7 @@ def process_component(component, component_data, session):
     update_yaml_checksum(component_data, checksums, latest_version)
     if component not in ['kubeadm', 'kubectl', 'kubelet']: # kubernetes dependent components
         update_yaml_version(component, component_data, latest_version)
-    if component in ['etcd', 'containerd', 'crio', 'calico', 'cilium', 'krew', 'helm']: # in README
+    if component in ['etcd', 'containerd', 'crio', 'calicoctl', 'cilium', 'krew', 'helm']: # in README
         if component in ['crio', 'crictl']:
             component_major_minor_version = get_major_minor_version(latest_version)
             if component_major_minor_version != kube_major_version: # do not update README
@@ -420,6 +420,8 @@ def process_component(component, component_data, session):
             component = component.replace('crio', 'cri-o')
         elif component == 'containerd':
             latest_version = f'v{latest_version}'
+        elif component == 'calicoctl':
+            component = component.replace('calicoctl', 'calico')
         update_readme(component, latest_version)
 
 
