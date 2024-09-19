@@ -409,7 +409,6 @@ def main(loglevel, component, max_workers):
 
     if component != 'all':
         if component in component_info:
-            logging.info(f'Processing specified component: {component}')
             process_component(component, component_info[component], session, version_diff)
         else:
             logging.error(f'Component {component} not found in config.')
