@@ -1,3 +1,15 @@
+# Arhitectures and OSes
+architectures = ['arm', 'arm64', 'amd64', 'ppc64le']
+oses = ['darwin', 'linux', 'windows']
+
+# Paths
+path_download = 'roles/kubespray-defaults/defaults/main/download.yml'
+path_checksum = 'roles/kubespray-defaults/defaults/main/checksums.yml'
+path_main = 'roles/kubespray-defaults/defaults/main/main.yml'
+path_readme = 'README.md'
+path_version_diff = 'version_diff.json'
+
+
 component_info = {
     'calico_crds': {
         'owner': 'projectcalico',
@@ -208,13 +220,3 @@ component_info = {
         'release_type' : 'release',
         },
 }
-
-# Arhitectures and OSes
-architectures = ['arm', 'arm64', 'amd64', 'ppc64le']
-oses = ['darwin', 'linux', 'windows']
-
-# Paths
-path_download = 'roles/kubespray-defaults/defaults/main/download.yml'
-path_checksum = 'roles/kubespray-defaults/defaults/main/checksums.yml'
-path_main = 'roles/kubespray-defaults/defaults/main/main.yml'
-path_version_diff = 'version_diff.json'
