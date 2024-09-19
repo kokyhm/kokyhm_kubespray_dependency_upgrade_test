@@ -6,7 +6,7 @@ import argparse
 import requests
 
 
-# DO not commit any prints if the script doesn't exit with error code
+# Do not commit any prints if the script doesn't exit with error code
 # Otherwise it will be part of the PR body
 
 github_api_url = 'https://api.github.com/graphql'
