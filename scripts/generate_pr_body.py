@@ -99,7 +99,6 @@ def link_pull_requests(input, repo_url):
 
 def format_description(description):
     lines = description.splitlines()
-    print(f'length of line is {len(lines)}')
     
     if len(lines) > 50:
         first_part = '\n'.join(lines[:50])
