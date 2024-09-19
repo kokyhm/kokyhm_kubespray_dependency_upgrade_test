@@ -33,20 +33,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r scripts/dependency_requirements.txt
 
+      - name: Run version check to create version_diff.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/dependency_updater.py --ci-check --component ${{ github.event.inputs.component }}
+
       - name: Update component version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/dependency_updater.py --component ${{ github.event.inputs.component }}
 
-      - name: Run version check to create version_diff.json
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/dependency_updater.py --ci-check --component ${{ github.event.inputs.component }}
-      
-      - name: Check if file exists
-        shell: bash
-        run: cat version_diff.json
-        
       - name: Generate PR body with links
         id: generate_pr_body
         env:

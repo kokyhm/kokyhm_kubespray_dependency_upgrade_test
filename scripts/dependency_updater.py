@@ -24,7 +24,7 @@ yaml.indent(mapping=2, sequence=4, offset=2)
 
 pwd = os.getcwd()
 cache_dir = './cache'
-cache_expiry_seconds = 10
+cache_expiry_seconds = 86400
 os.makedirs(cache_dir, exist_ok=True)
 
 
@@ -74,14 +74,12 @@ def save_to_cache(component, data):
 def get_current_version(component, component_data):
     kube_major_version = component_data['kube_major_version']
     placeholder_version = [kube_major_version if item == 'kube_major_version' else item for item in component_data['placeholder_version']]
-    logging.debug(f'Placeholder version {placeholder_version}')
     if component.startswith('kube'):
         current_version = main_yaml_data
     else:    
         current_version = download_yaml_data
     for key in placeholder_version:
         current_version = current_version.get(key)
-    logging.debug(f'Version is {current_version}')
     return current_version
 
 def get_release(component, component_data, session, number_of_releases=10):
