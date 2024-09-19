@@ -29,12 +29,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/dependency_updater.py --ci-check
 
-      - name: Parse version_diff.json
-        id: parse_version_diff
-        run: |
-          cat version_diff.json
-          echo "::set-output name=version_diff::$(cat version_diff.json)"
-
       - name: Trigger subsequent action for each component
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
