@@ -43,7 +43,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/dependency_updater.py --component ${{ github.event.inputs.component }}
 
-      - name: Generate PR body with links
+      - name: Generate PR body
         id: generate_pr_body
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
