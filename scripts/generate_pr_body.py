@@ -99,11 +99,9 @@ def main(component):
     try:
         with open('version_diff.json') as f:
             data = json.load(f)
-            print(f"Available keys in version_diff.json: {list(data.keys())}")
             data = data[component]
     except Exception as e:
-        print(f'Error reading version_diff.json or component not found: {e}')
-        sys.exit(1)  # Exit if an error occurs
+        sys.exit(1)
     pr_body = "Starting from here"
     release = data['release']
     owner = release['owner']
@@ -143,7 +141,7 @@ def main(component):
         commits = get_commits(name, release)
         if commits:
             pr_body += commits
-    print(f"::set-output name=pr_body::{pr_body}")
+    print(f'{pr_body}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Pull Request body generator')
