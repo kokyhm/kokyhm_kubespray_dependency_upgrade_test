@@ -24,7 +24,7 @@ yaml.indent(mapping=2, sequence=4, offset=2)
 
 pwd = os.getcwd()
 cache_dir = './cache'
-cache_expiry_seconds = 86400
+cache_expiry_seconds = 10
 os.makedirs(cache_dir, exist_ok=True)
 
 
