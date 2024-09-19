@@ -86,7 +86,7 @@ def get_commits(version, release, number_of_commits=5):
                 short_oid = node['oid'][:7]
                 commit_message = node['message'].split('\n')[0]
                 commit_url = node['url']
-                pr_commits += f'- [`{short_oid}`]({commit_url}) {commit_message}  \n'
+                pr_commits += f'[- `{short_oid}`]({commit_url}) {commit_message}  \n'
             pr_commits += '\n</details>'
             return pr_commits
         except:
