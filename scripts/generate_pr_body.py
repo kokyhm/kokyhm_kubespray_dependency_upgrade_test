@@ -77,18 +77,20 @@ def get_commits(version, release, number_of_commits=5):
     headers = {'Authorization': f'Bearer {gh_token}'}
     response = requests.post(github_api_url, json={'query': query}, headers=headers)
     if response.status_code == 200:
-        data = response.json()
-        pr_commits = '<details>\n<summary>Commits</summary>\n\n'
-        commits = data['data']['repository']['ref']['target']['target']['history']['edges']
-        for commit in commits:
-            node = commit['node']
-            short_oid = node['oid'][:7]
-            commit_message = node['message'].split('\n')[0]
-            commit_url = node['url']
-            pr_commits += f'[{short_oid}]({commit_url}) {commit_message}  \n'
-        pr_commits += '\n</details>'
-
-        return pr_commits
+        try:
+            data = response.json()
+            pr_commits = '\n<details>\n<summary>Commits</summary>\n\n'
+            commits = data['data']['repository']['ref']['target']['target']['history']['edges']
+            for commit in commits:
+                node = commit['node']
+                short_oid = node['oid'][:7]
+                commit_message = node['message'].split('\n')[0]
+                commit_url = node['url']
+                pr_commits += f'[{short_oid}]({commit_url}) {commit_message}  \n'
+            pr_commits += '\n</details>'
+            return pr_commits
+        except:
+            return None
     else:
         return None
 
