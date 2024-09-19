@@ -230,7 +230,6 @@ def get_checksums(component, component_data, version, session):
 def update_yaml_checksum(component_data, checksums, version):
     placeholder_checksum = component_data['placeholder_checksum']
     checksum_structure = component_data['checksum_structure']
-    logging.info(f'Updating {placeholder_checksum} with {checksums}')
     current = checksum_yaml_data[placeholder_checksum]
     if checksum_structure == 'simple': 
         # Simple structure (placeholder_checksum -> version -> checksum)
@@ -245,6 +244,7 @@ def update_yaml_checksum(component_data, checksums, version):
         # Arch structure (placeholder_checksum -> arch -> version -> checksum)
         for arch, checksum in checksums.items():
             current[arch] = {(version): checksum, **current.get(arch, {})}
+    logging.info(f'Updated {placeholder_checksum} with {checksums}')
 
 def resolve_kube_dependent_component_version(component, component_data, version):
     kube_major_version = component_data['kube_major_version']
@@ -269,7 +269,6 @@ def update_yaml_version(component, component_data, version):
         resolved_version if item == 'kube_major_version' else item 
         for item in placeholder_version
     ]
-    logging.info(f'Updating {updated_placeholder} to {version}')
     current = download_yaml_data
     if len(updated_placeholder) == 1:
         current[updated_placeholder[0]] = version
@@ -283,6 +282,7 @@ def update_yaml_version(component, component_data, version):
             new_entry = {final_key: version, **current}
             current.clear()
             current.update(new_entry)
+    logging.info(f'Updated {updated_placeholder} to {version}')
 
 def update_readme(component, version):
     for i, line in enumerate(readme_data):
@@ -412,7 +412,7 @@ def process_component(component, component_data, session):
     update_yaml_checksum(component_data, checksums, latest_version)
     if component not in ['kubeadm', 'kubectl', 'kubelet']: # kubernetes dependent components
         update_yaml_version(component, component_data, latest_version)
-    if component in ['etcd', 'containerd', 'crio', 'calicoctl', 'cilium', 'krew', 'helm']: # in README
+    if component in ['etcd', 'containerd', 'crio', 'calicoctl', 'krew', 'helm']: # in README
         if component in ['crio', 'crictl']:
             component_major_minor_version = get_major_minor_version(latest_version)
             if component_major_minor_version != kube_major_version: # do not update README
@@ -422,6 +422,8 @@ def process_component(component, component_data, session):
             latest_version = f'v{latest_version}'
         elif component == 'calicoctl':
             component = component.replace('calicoctl', 'calico')
+        elif component == 'ciliumcli':
+            component = component.replace('ciliumcli', 'cilium')
         update_readme(component, latest_version)
 
 
