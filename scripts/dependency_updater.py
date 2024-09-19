@@ -6,7 +6,6 @@ import requests
 import time
 import json
 import argparse
-import requests
 import hashlib
 from ruamel.yaml import YAML
 from requests.adapters import HTTPAdapter
