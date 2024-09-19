@@ -68,7 +68,7 @@ def get_commits(tag, release, number_of_commits=5):
             elif 'target' in target and 'history' in target['target']:
                 commits = target['target']['history']['edges']
             else:
-                # print("No commit history found.")
+                # print('No commit history found.')
                 return None
             
             pr_commits = '\n<details>\n<summary>Commits</summary>\n\n'
@@ -82,11 +82,11 @@ def get_commits(tag, release, number_of_commits=5):
             pr_commits += '\n</details>'
             return pr_commits
         except Exception as e:
-            # print(f"Error parsing commits: {e}")
-            # print(f"data: {response.text}")
+            # print(f'Error parsing commits: {e}')
+            # print(f'data: {response.text}')
             return None
     else:
-        # print(f"GraphQL query failed with status code {response.status_code}")
+        # print(f'GraphQL query failed with status code {response.status_code}')
         return None
 
 
@@ -123,10 +123,9 @@ def main(component):
             data = json.load(f)
             data = data[component]
     except Exception as e:
-        print(f"Error loading version_diff.json or component not found: {e}")
+        print(f'Error loading version_diff.json or component not found: {e}')
         sys.exit(1)
 
-    pr_body = "Starting from here"
     release = data['release']
     owner = release['owner']
     repo = release['repo']

@@ -28,10 +28,10 @@ cache_expiry_seconds = 86400
 os.makedirs(cache_dir, exist_ok=True)
 
 
-github_api_url = "https://api.github.com/graphql"
+github_api_url = 'https://api.github.com/graphql'
 gh_token = os.getenv('GH_TOKEN')
 if not gh_token:
-    logging.error("GH_TOKEN is not set. You can set it via 'export GH_TOKEN=<your-token>'. Exiting.")
+    logging.error('GH_TOKEN is not set. You can set it via "export GH_TOKEN=<your-token>". Exiting.')
     sys.exit(1)
 
 
@@ -103,8 +103,8 @@ def get_release(component, component_data, session, number_of_releases=10):
             """ % (component_data['owner'], component_data['repo'], number_of_releases)
 
             headers = {
-                "Authorization": f"Bearer {gh_token}",
-                "Content-Type": "application/json"
+                'Authorization': f'Bearer {gh_token}',
+                'Content-Type': 'application/json'
             }
 
             response = session.post(github_api_url, json={'query': query}, headers=headers)
@@ -119,7 +119,7 @@ def get_release(component, component_data, session, number_of_releases=10):
                     save_to_cache(component, release)
                     return release
 
-            logging.warning(f"No latest release found for {component}")
+            logging.warning(f'No latest release found for {component}')
             return None
         except Exception as e:
             logging.error(f'Error fetching latest release for {component}: {e}')
@@ -145,8 +145,8 @@ def get_release_tag(component, component_data, session):
             """ % (component_data['owner'], component_data['repo'])
 
             headers = {
-                "Authorization": f"Bearer {gh_token}",
-                "Content-Type": "application/json"
+                'Authorization': f'Bearer {gh_token}',
+                'Content-Type': 'application/json'
             }
 
             response = session.post(github_api_url, json={'query': query}, headers=headers)
@@ -178,8 +178,8 @@ def calculate_checksum(cachefile, url_download, arch):
                 if 'SHA256' in line and 'linux' in line and arch in line:
                     return line.split()[0]
     sha256_hash = hashlib.sha256()
-    with open(f'cache/{cachefile}', "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
+    with open(f'cache/{cachefile}', 'rb') as f:
+        for byte_block in iter(lambda: f.read(4096), b''):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
@@ -257,7 +257,7 @@ def resolve_kube_dependent_component_version(component, component_data, version)
             else:
                 resolved_version = component_major_version
         except (IndexError, AttributeError):
-            logging.error(f"Error parsing version for {component}: {version}")
+            logging.error(f'Error parsing version for {component}: {version}')
             return
     else:
         resolved_version = kube_major_version
@@ -301,7 +301,7 @@ def save_json_file(file_path, data):
             json.dump(data, f, indent=2)
         return True
     except Exception as e:
-        logging.error(f"Failed to save {file_path}: {e}")
+        logging.error(f'Failed to save {file_path}: {e}')
         return False
 
 def load_yaml_file(yaml_file):
@@ -375,9 +375,9 @@ def process_component(component, component_data, session, version_diff):
         release['release_type'] = component_data['release_type']
         if (current_version != latest_version):
             version_diff[component] = {
-                "current_version" : current_version, # needed for dependecy-check
-                "latest_version" : latest_version, # needed for dependecy-check
-                "release" : release # needed for generate_pr_body
+                'current_version' : current_version, # needed for dependecy-check
+                'latest_version' : latest_version, # needed for dependecy-check
+                'release' : release # needed for generate_pr_body
             }
         return
     
@@ -396,14 +396,14 @@ def main(loglevel, component, max_workers):
     checksum_yaml_data = load_yaml_file(path_checksum)
     download_yaml_data = load_yaml_file(path_download)
     if not (main_yaml_data and checksum_yaml_data and download_yaml_data):
-        logging.error(f"Failed to open required yaml file, current working directory is {pwd}. Exiting...")
-        return
+        logging.error(f'Failed to open required yaml file, current working directory is {pwd}. Exiting...')
+        sys.exit(1)
 
     if args.ci_check:
         version_diff = create_json_file(path_version_diff)
-        if version_diff is None:
-            logging.error(f'Failed to create version_diff.json file ')
-            return
+        if not version_diff:
+            logging.error(f'Failed to create version_diff.json file')
+            sys.exit(1)
     else:
         version_diff = {}
 
@@ -412,7 +412,7 @@ def main(loglevel, component, max_workers):
             process_component(component, component_info[component], session, version_diff)
         else:
             logging.error(f'Component {component} not found in config.')
-            return
+            sys.exit(1)
     else:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
