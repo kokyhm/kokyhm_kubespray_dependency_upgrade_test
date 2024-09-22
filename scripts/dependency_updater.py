@@ -373,6 +373,7 @@ def process_component(component, component_data, session):
         logging.info(f'Stop processing component {component}, current version unknown')
         return
 
+    latest_version = None
     # Get latest version
     if component_data['release_type'] == 'tag':
         release = get_release_tag(component, component_data, session)
@@ -380,7 +381,8 @@ def process_component(component, component_data, session):
             latest_version = release.get('name')
     else:
         release = get_release(component, component_data, session)
-        latest_version = release.get('tagName')    
+        if release:
+            latest_version = release.get('tagName')    
 
     if not latest_version:
         logging.info(f'Stop processing component {component}, latest version unknown.')
