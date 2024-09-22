@@ -12,83 +12,35 @@ import requests
 github_api_url = 'https://api.github.com/graphql'
 gh_token = os.getenv('GH_TOKEN')
 
-def get_commits(tag, release, number_of_commits=5):
-    owner = release['owner']
-    repo = release['repo']
-    repo_url = f'https://github.com/{owner}/{repo}'
-    
-    query = """
-    {
-        repository(owner: "%s", name: "%s") {
-            ref(qualifiedName: "refs/tags/%s") {
-                target {
-                    ... on Tag {
-                        target {
-                            ... on Commit {
-                                history(first: %s) {
-                                    edges {
-                                        node {
-                                            oid
-                                            message
-                                            url
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    ... on Commit {
-                        # In case the tag directly points to a commit
-                        history(first: %s) {
-                            edges {
-                                node {
-                                    oid
-                                    message
-                                    url
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    """ % (owner, repo, tag, number_of_commits, number_of_commits)
-
-    headers = {'Authorization': f'Bearer {gh_token}'}
-    response = requests.post(github_api_url, json={'query': query}, headers=headers)
-
-    if response.status_code == 200:
-        try:
-            data = response.json()
-            target = data['data']['repository']['ref']['target']
-
-            if 'history' in target:
-                commits = target['history']['edges']
-            elif 'target' in target and 'history' in target['target']:
-                commits = target['target']['history']['edges']
-            else:
-                # print('No commit history found.')
-                return None
-            
-            pr_commits = '\n<details>\n<summary>Commits</summary>\n\n'
-            for commit in commits:
-                node = commit['node']
-                short_oid = node['oid'][:7]
-                commit_message = node['message'].split('\n')[0]
-                commit_message = link_pull_requests(commit_message, repo_url)
-                commit_url = node['url']
-                pr_commits += f'- [`{short_oid}`]({commit_url}) {commit_message}  \n'
-            pr_commits += '\n</details>'
-            return pr_commits
-        except Exception as e:
-            # print(f'Error parsing commits: {e}')
-            # print(f'data: {response.text}')
+def get_commits(repo_metadata):
+    tags = repo_metadata.get('refs', {}).get('nodes', [])
+    if tags:
+        # Use first/latest
+        first_tag = tags[0]
+        target = first_tag.get('target', {})
+        
+        # Check if the target is a Tag pointing to a Commit
+        if 'history' in target.get('target', {}):
+            commit_history = target['target']['history'].get('edges', [])
+        # Check if the target is directly a Commit object
+        elif 'history' in target:
+            commit_history = target['history'].get('edges', [])
+        else:
             return None
-    else:
-        # print(f'GraphQL query failed with status code {response.status_code}')
-        return None
-
+        
+        commits = []
+        for commit in commit_history:
+            commit_node = commit.get('node', {})
+            commit_info = {
+                'oid': commit_node.get('oid'),
+                'message': commit_node.get('message'),
+                'url': commit_node.get('url')
+            }
+            commits.append(commit_info)
+        
+        if commits:
+            return commits
+    return None
 
 def replace_match(match, repo_url):
     pr_number = match.group(2)
@@ -97,12 +49,12 @@ def replace_match(match, repo_url):
 def link_pull_requests(input, repo_url):
     return re.sub(r'(\(?)#(\d+)(\)?)', lambda match: replace_match(match, repo_url), input)
 
-def format_description(description, length=20):
+def format_description(description, args.description_number_of_lines):
     lines = description.splitlines()
     
-    if len(lines) > length:
-        first_part = '\n'.join(lines[:length])
-        collapsed_part = '\n'.join(lines[length:])
+    if len(lines) > args.description_number_of_lines:
+        first_part = '\n'.join(lines[:args.description_number_of_lines])
+        collapsed_part = '\n'.join(lines[args.description_number_of_lines:])
         
         formatted_description = f"""{first_part}
 
@@ -116,34 +68,44 @@ def format_description(description, length=20):
         return formatted_description
     else:
         return description
+    
+def generate_body(repo_metadata):
+    return
 
-def main(component):
+def main(args.component):
     try:
         with open('version_diff.json') as f:
             data = json.load(f)
-            data = data[component]
+            data = data[args.component]
     except Exception as e:
         print(f'Error loading version_diff.json or component not found: {e}')
         sys.exit(1)
 
-    release = data['release']
-    owner = release['owner']
-    repo = release['repo']
+    owner = data['owner']
+    repo = data['repo']
+    repo_metadata = data['repo_metadata']
+    latest_version = data['latest_version']
+    repo_url = f'https://github.com/{owner}/{repo}'
+    release_url = f'https://github.com/{owner}/{repo}/releases/tag/{latest_version}'
+    commits = get_commits(name, repo_metadata)
+    try:
+        tagName = "sad"
     
-    if component in ['gvisor_containerd_shim','gvisor_runsc']:
+    if args.component in ['gvisor_containerd_shim','gvisor_runsc']:
         name = release.get('name')
-        release_url = f'https://github.com/google/gvisor/releases/tag/{name}'
+        release_url = f'https://github.com/{owner}/{repo}/releases/tag/{name}'
+
         pr_body = f"""
 ### {name}
 
 **URL**: [Release {name}]({release_url})
 
         """
-        commits = get_commits(name, release)
+        
         if commits:
             pr_body += commits
     else:
-        name = release['tagName']
+        name = data['latest_version']
         tag_name = release['tagName']
         published_at = release['publishedAt']
         release_url = release['url']
@@ -168,6 +130,7 @@ def main(component):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Pull Request body generator')
     parser.add_argument('--component', required=True, help='Specify the component to process')
+    parser.add_argument('--description-number-of-lines', type=int, default=20, help='Number of lines to include from the description')
     args = parser.parse_args()
     
-    main(args.component)
+    main()
