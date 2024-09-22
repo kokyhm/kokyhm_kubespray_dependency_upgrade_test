@@ -162,7 +162,7 @@ scheduler_plugins_supported_versions:
   v1.28: v0.28.9
 scheduler_plugins_version: "{{ scheduler_plugins_supported_versions[kube_major_version] }}"
 
-yq_version: "v4.42.1"
+yq_version: "v4.44.3"
 
 github_url: https://github.com
 dl_k8s_io_url: https://dl.k8s.io
