@@ -73,6 +73,7 @@ crio_archive_checksums:
 # Kubernetes versions above Kubespray's current target version are untested and should be used with caution.
 kubelet_checksums:
   arm:
+    v1.31.1: 0
     v1.30.4: 0
     v1.30.3: 0
     v1.30.2: 0
@@ -100,6 +101,7 @@ kubelet_checksums:
     v1.28.1: 0
     v1.28.0: 0
   arm64:
+    v1.31.1: 35567a2c120d667127207dfbb0100097ba0f1300aed0cdb594fb676741fb7efa
     v1.30.4: d3df7a4acff9aba5518930b9c417e8e0ca8cf5e105b7fee6504891fa8f3e962a
     v1.30.3: 41d1926cd7b9c7c250c45f11c8fa9d1946cae98aec2eefc61a2cb4933612bcce
     v1.30.2: 72ceb082311b42032827a936f80cd2437b8eee03053d05dbe36ba48585febfb8
@@ -127,6 +129,7 @@ kubelet_checksums:
     v1.28.1: 9b7fa64b2785da4a38768377961e227f8da629c56a5df43ca1b665dd07b56f3c
     v1.28.0: 05dd12e35783cab4960e885ec0e7d0e461989b94297e7bea9018ccbd15c4dce9
   amd64:
+    v1.31.1: d4c21ba89ac19af0a9a59c97dea86cbd14845af9013a40ca4814f9f8c4a28640
     v1.30.4: 0c02c0f997b3e9769eae7ca051856054411fca947b3d5409d991ce1964dd0e69
     v1.30.3: 9a37ddd5ea026639b7d85e98fa742e392df7aa5ec917bed0711a451613de3c1c
     v1.30.2: 6923abe67ef069afca61c71c585023840426e802b198298055af3a82e11a4e52
@@ -154,6 +157,7 @@ kubelet_checksums:
     v1.28.1: 2bc22332f44f8fcd3fce57879fd873f977949ebd261571fbae31fbb2713a5dd3
     v1.28.0: bfb6b977100963f2879a33e5fbaa59a5276ba829a957a6819c936e9c1465f981
   ppc64le:
+    v1.31.1: 4607f4f11b9953c40d423b5091b2de8a1ceaccafc66d48f6b905a7ac5ec64ca2
     v1.30.4: 50ea965747f3f8c69288aa9268e5c2cc1eb6c3f0b3efa7eba862258bd225d98d
     v1.30.3: c48df46a72ff9764fd1bc54e99b6154772031b1e66c36b0ac5764a5801eadfc0
     v1.30.2: 268dfbb7ee3abcb8ff9fd0a88f81204e40dd33d177f7878941c9ff6b7cca0474
