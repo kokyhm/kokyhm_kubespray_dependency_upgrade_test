@@ -448,8 +448,6 @@ def main(loglevel, component, max_workers):
         if version_diff is None:
             logging.error(f'Failed to create version_diff.json file')
             sys.exit(1)
-    else:
-        version_diff = {}
 
     if component != 'all':
         if component in component_info:
