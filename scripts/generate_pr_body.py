@@ -1,61 +1,68 @@
-import os
-import re
 import sys
 import json
 import argparse
-import requests
-
 
 # Do not commit any prints if the script doesn't exit with error code
 # Otherwise it will be part of the PR body
 
-github_api_url = 'https://api.github.com/graphql'
-gh_token = os.getenv('GH_TOKEN')
 
-def get_commits(repo_metadata):
-    tags = repo_metadata.get('refs', {}).get('nodes', [])
-    if tags:
-        # Use first/latest
-        first_tag = tags[0]
-        target = first_tag.get('target', {})
+def load_json(component):
+    try:
+        with open('version_diff.json', 'r') as f:
+            repo_metadata = json.load(f)
+            component_data = repo_metadata.get(component)
+            return component_data
+    except Exception as e:
+        return None
+
+def get_version_commits(version, component_metadata):
+    refs = component_metadata.get('refs', {}).get('nodes', [])
+    for ref in refs:
+        if ref['name'] == version:
+            target = ref.get('target', {})
         
-        # Check if the target is a Tag pointing to a Commit
-        if 'history' in target.get('target', {}):
-            commit_history = target['target']['history'].get('edges', [])
-        # Check if the target is directly a Commit object
-        elif 'history' in target:
-            commit_history = target['history'].get('edges', [])
-        else:
-            return None
-        
-        commits = []
-        for commit in commit_history:
-            commit_node = commit.get('node', {})
-            commit_info = {
-                'oid': commit_node.get('oid'),
-                'message': commit_node.get('message'),
-                'url': commit_node.get('url')
-            }
-            commits.append(commit_info)
-        
-        if commits:
-            return commits
+            # Check if the target is a Tag pointing to a Commit
+            if 'history' in target.get('target', {}):
+                commit_history = target['target']['history'].get('edges', [])
+            # Check if the target is directly a Commit object
+            elif 'history' in target:
+                commit_history = target['history'].get('edges', [])
+            else:
+                return None
+            
+            commits = []
+            for commit in commit_history:
+                commit_node = commit.get('node', {})
+                commit_info = {
+                    'oid': commit_node.get('oid'),
+                    'message': commit_node.get('message'),
+                    'url': commit_node.get('url')
+                }
+                commits.append(commit_info)
+            
+            if commits:
+                return commits
     return None
 
-def replace_match(match, repo_url):
-    pr_number = match.group(2)
-    return f'{match.group(1)}[# {pr_number}]({repo_url}/pull/{pr_number}){match.group(3)}'
+def get_version_description(version, repo_metadata):
+    if repo_metadata:
+        releases = repo_metadata.get('releases', {}).get('nodes', [])
+        for release in releases:
+            if release.get('tagName') == version:
+                description = release.get('description', None)
+                return description
+    return None
 
-def link_pull_requests(input, repo_url):
-    return re.sub(r'(\(?)#(\d+)(\)?)', lambda match: replace_match(match, repo_url), input)
+def handle_reference(input):
+    return input.replace('github.com', 'redirect.github.com') # Prevent reference in the source PR
 
-def format_description(description, args.description_number_of_lines):
+# Split description into visible and collapsed
+def format_description(description):
+    description = handle_reference(description)
     lines = description.splitlines()
-    
     if len(lines) > args.description_number_of_lines:
         first_part = '\n'.join(lines[:args.description_number_of_lines])
         collapsed_part = '\n'.join(lines[args.description_number_of_lines:])
-        
         formatted_description = f"""{first_part}
 
 <details>
@@ -69,62 +76,50 @@ def format_description(description, args.description_number_of_lines):
     else:
         return description
     
-def generate_body(repo_metadata):
-    return
-
-def main(args.component):
-    try:
-        with open('version_diff.json') as f:
-            data = json.load(f)
-            data = data[args.component]
-    except Exception as e:
-        print(f'Error loading version_diff.json or component not found: {e}')
+def main():
+    component_data = load_json(args.component)
+    if not component_data:
+        print('Failed to load component data')
         sys.exit(1)
-
-    owner = data['owner']
-    repo = data['repo']
-    repo_metadata = data['repo_metadata']
-    latest_version = data['latest_version']
-    repo_url = f'https://github.com/{owner}/{repo}'
+    owner = component_data.get('owner')
+    repo = component_data.get('repo')
+    latest_version = component_data.get('latest_version')
+    repo_metadata = component_data.get('repo_metadata', {}).get(args.component)
     release_url = f'https://github.com/{owner}/{repo}/releases/tag/{latest_version}'
-    commits = get_commits(name, repo_metadata)
-    try:
-        tagName = "sad"
+    commits = get_version_commits(latest_version, repo_metadata)
+    description = get_version_description(latest_version, repo_metadata)
+    formatted_description = format_description(description)
+
+    # General info
+    pr_body = f"""
+### {latest_version}
+
+**URL**: [Release {latest_version}]({release_url})
+
+        """
     
-    if args.component in ['gvisor_containerd_shim','gvisor_runsc']:
-        name = release.get('name')
-        release_url = f'https://github.com/{owner}/{repo}/releases/tag/{name}'
+    # Description
+    if formatted_description:
 
-        pr_body = f"""
-### {name}
-
-**URL**: [Release {name}]({release_url})
-
-        """
-        
-        if commits:
-            pr_body += commits
-    else:
-        name = data['latest_version']
-        tag_name = release['tagName']
-        published_at = release['publishedAt']
-        release_url = release['url']
-        description = release['description']
-        repo_url = 'https://github.com/%s/%s' % (owner, repo)
-        description = link_pull_requests(description, repo_url)
-        pr_body = f"""
-### {name}
-
-**Tag**: {tag_name}  
-**Published at**: {published_at}  
-**URL**: [Release {tag_name}]({release_url})
-
+        pr_body += f"""
 #### Description:
-{format_description(description)}
+{formatted_description}
         """
-        commits = get_commits(name, release)
-        if commits:
-            pr_body += commits
+    
+    # Commits
+    if commits:
+        pr_commits = '\n<details>\n<summary>Commits</summary>\n\n'
+        for commit in commits:
+            short_oid = commit.get('oid')[:7]
+            message = commit.get('message').split('\n')[0]
+            commit_message = handle_reference(message)
+            # commit_message = link_pull_requests(commit_message, repo_url)
+            commit_url = commit.get('url')
+            pr_commits += f'- [`{short_oid}`]({commit_url}) {commit_message}  \n'
+        pr_commits += '\n</details>'
+        pr_body += pr_commits
+    
+    # Print body
     print(pr_body)
 
 if __name__ == '__main__':

@@ -64,19 +64,20 @@ def get_current_version(component, component_data):
     return current_version
 
 def get_latest_version(component, repo_metadata):
-    releases = repo_metadata.get('releases', {}).get('nodes', [])
+    component_metadata = repo_metadata.get(component)
+    releases = component_metadata.get('releases', {}).get('nodes', [])
     for release in releases:
         if release.get('isLatest', False):
             logging.debug(f"Component {component} latest version: {release['tagName']}")
             return release['tagName']
     
-    tags = repo_metadata.get('refs', {}).get('nodes', [])
+    tags = component_metadata.get('refs', {}).get('nodes', [])
     if tags:
         first_tag = tags[0]['name']
         logging.debug(f"Component {component} latest version: {first_tag}")
         return first_tag
 
-    logging.warning(f"Component {component} latest version: No releases or tags found.")
+    logging.error(f"Component {component} latest version: No releases or tags found.")
     return None
 
 def get_repository_metadata(component_info, session):
@@ -84,10 +85,9 @@ def get_repository_metadata(component_info, session):
     for component, data in component_info.items():
         owner = data['owner']
         repo = data['repo']
-        
         query_parts.append(f"""
             {component}: repository(owner: "{owner}", name: "{repo}") {{
-                releases(first: {args.number_of_nodes}, orderBy: {{field: CREATED_AT, direction: DESC}}) {{
+                releases(first: {args.graphql_number_of_entries}, orderBy: {{field: CREATED_AT, direction: DESC}}) {{
                     nodes {{
                         tagName
                         url
@@ -96,14 +96,14 @@ def get_repository_metadata(component_info, session):
                         isLatest
                     }}
                 }}
-                refs(refPrefix: "refs/tags/", first: {args.number_of_nodes}, orderBy: {{field: TAG_COMMIT_DATE, direction: DESC}}) {{
+                refs(refPrefix: "refs/tags/", first: {args.graphql_number_of_entries}, orderBy: {{field: TAG_COMMIT_DATE, direction: DESC}}) {{
                     nodes {{
                         name
                         target {{
                             ... on Tag {{
                                 target {{
                                     ... on Commit {{
-                                        history(first: {args.number_of_commits}) {{
+                                        history(first: {args.graphql_number_of_commits}) {{
                                             edges {{
                                                 node {{
                                                     oid
@@ -117,7 +117,7 @@ def get_repository_metadata(component_info, session):
                             }}
                             ... on Commit {{
                                 # In case the tag directly points to a commit
-                                history(first: {args.number_of_commits}) {{
+                                history(first: {args.graphql_number_of_commits}) {{
                                     edges {{
                                         node {{
                                             oid
@@ -143,8 +143,13 @@ def get_repository_metadata(component_info, session):
         response = session.post(github_api_url, json={'query': query}, headers=headers)
         response.raise_for_status()
         json_data = response.json()
-        logging.info(f'Graphql response:\n{json.dumps(json_data, indent=4)}')
-        return json_data['data']
+        data = json_data.get('data')
+        if data is not None and bool(data):  # Ensure 'data' is not None and not empty
+            logging.debug(f"GraphQL data response:\n{json.dumps(data, indent=2)}")
+            return data
+        else:
+            logging.error(f"GraphQL query returned errors: {json_data}")
+            return None
     except Exception as e:
         logging.error(f'Error fetching repository metadata: {e}')
         return None
@@ -350,7 +355,7 @@ def get_major_minor_version(version):
 def process_component(component, component_data, repo_metadata, session):
     logging.info(f'Processing component: {component}')
 
-    # Extract current kube version
+    # Get current kube version
     kube_version = main_yaml_data.get('kube_version')
     kube_major_version = get_major_minor_version(kube_version)
     component_data['kube_version'] = kube_version  # needed for nested components
@@ -362,36 +367,38 @@ def process_component(component, component_data, repo_metadata, session):
         logging.info(f'Stop processing component {component}, current version unknown')
         return
 
-    # Get latest version
+    # Get latest component version
     latest_version = get_latest_version(component, repo_metadata)
     if not latest_version:
         logging.info(f'Stop processing component {component}, latest version unknown.')
         return
     
-    # Process version string, remove v, etc.
-    latest_version = process_version_string(component, latest_version)
-
-    # Check if version is up to date
+    # Basic logging
     if current_version == latest_version:
         logging.info(f'Component {component}, version {current_version} is up to date')
-        if args.skip_checksum and (current_version == latest_version):
-            logging.info(f'Stop processing component {component} due to flag.')
-            return
     else:
         logging.info(f'Component {component} version discrepancy, current={current_version}, latest={latest_version}')
-    
-    # Write data needed for CI and return
+
+    # CI - write data and return
     if args.ci_check:
         version_diff[component] = {
             # used in dependecy-check.yml workflow
             'current_version' : current_version,
-            'latest_version' : latest_version, # and generate_pr_body
+            'latest_version' : latest_version,
             # used in generate_pr_body.py script
             'owner' : component_data['owner'],
             'repo' : component_data['repo'],
             'repo_metadata' : repo_metadata,
         }
         return
+    
+    # Handle skip_checksum script argument
+    if args.skip_checksum:
+        logging.info(f'Stop processing component {component} due to script argument.')
+        return
+    
+    # Process version string, remove v, etc.
+    latest_version = process_version_string(component, latest_version)
     
     # Get checksums
     checksums = get_checksums(component, component_data, latest_version, session)
@@ -444,7 +451,9 @@ def main():
             specific_component_info = {args.component: component_info[args.component]}
             # Get repository metadata => releases, tags and commits
             repo_metadata = get_repository_metadata(specific_component_info, session)
-            process_component(args.component, component_info[component], repo_metadata, session)
+            if not repo_metadata:
+                sys.exit(1)
+            process_component(args.component, component_info[args.component], repo_metadata, session)
         else:
             logging.error(f'Component {args.component} not found in config.')
             sys.exit(1)
@@ -452,13 +461,15 @@ def main():
     else:
         # Get repository metadata => releases, tags and commits
         repo_metadata = get_repository_metadata(component_info, session)
+        if not repo_metadata:
+            sys.exit(1)
         with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
             futures = []
             logging.info(f'Running with {executor._max_workers} executors')
             for component, component_data in component_info.items():
                 futures.append(executor.submit(process_component, component, component_data, repo_metadata, session))
             for future in futures:
-                future.result()
+                future.result()        
 
     # CI - save JSON file
     if args.ci_check:
