@@ -77,7 +77,7 @@ component_info = {
     'crio': {
         'owner': 'cri-o',
         'repo': 'cri-o',
-        'url_download': 'https://storage.googleapis.com/cri-o/artifacts/cri-o.ARCH.VERSION.tar.gz',
+        'url_download': 'https://storage.googleapis.com/cri-o/artifacts/cri-o.ARCH.VERSION.tar.gz.sha256sum',
         'placeholder_version': ['crio_supported_versions', 'kube_major_version'],
         'placeholder_checksum' : 'crio_archive_checksums',
         'checksum_structure' : 'arch',
@@ -122,7 +122,7 @@ component_info = {
     'helm': {
         'owner': 'helm',
         'repo': 'helm',
-        'url_download': 'https://get.helm.sh/helm-VERSION-linux-ARCH.tar.gz',
+        'url_download': 'https://get.helm.sh/helm-VERSION-linux-ARCH.tar.gz.sha256sum',
         'placeholder_version': ['helm_version'],
         'placeholder_checksum' : 'helm_archive_checksums',
         'checksum_structure' : 'arch',
@@ -186,7 +186,7 @@ component_info = {
     'runc': {
         'owner': 'opencontainers',
         'repo': 'runc',
-        'url_download': 'https://github.com/opencontainers/runc/releases/download/VERSION/runc.ARCH',
+        'url_download': 'https://github.com/opencontainers/runc/releases/download/VERSION/runc.sha256sum',
         'placeholder_version': ['runc_version'],
         'placeholder_checksum' : 'runc_checksums',
         'checksum_structure' : 'arch',

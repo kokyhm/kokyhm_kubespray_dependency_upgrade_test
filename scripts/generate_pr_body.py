@@ -16,11 +16,11 @@ def load_json(component):
         return None
 
 def get_version_commits(version, component_metadata):
-    refs = component_metadata.get('refs', {}).get('nodes', [])
-    for ref in refs:
-        if ref['name'] == version:
-            target = ref.get('target', {})
-        
+    tags = component_metadata.get('refs', {}).get('nodes', [])
+    for tag in tags:
+        if tag['name'] == version:
+            target = tag.get('target', {})
+
             # Check if the target is a Tag pointing to a Commit
             if 'history' in target.get('target', {}):
                 commit_history = target['target']['history'].get('edges', [])
@@ -29,7 +29,7 @@ def get_version_commits(version, component_metadata):
                 commit_history = target['history'].get('edges', [])
             else:
                 return None
-            
+
             commits = []
             for commit in commit_history:
                 commit_node = commit.get('node', {})
@@ -39,7 +39,7 @@ def get_version_commits(version, component_metadata):
                     'url': commit_node.get('url')
                 }
                 commits.append(commit_info)
-            
+
             if commits:
                 return commits
     return None
@@ -50,11 +50,11 @@ def get_version_description(version, repo_metadata):
         for release in releases:
             if release.get('tagName') == version:
                 description = release.get('description', None)
-                return description
+                return format_description(description)
     return None
 
 def handle_reference(input):
-    return input.replace('github.com', 'redirect.github.com') # Prevent reference in the source PR
+    return input.replace('github.com', 'redirect.github.com') # Prevent reference in the sourced PR
 
 # Split description into visible and collapsed
 def format_description(description):
@@ -75,7 +75,7 @@ def format_description(description):
         return formatted_description
     else:
         return description
-    
+
 def main():
     component_data = load_json(args.component)
     if not component_data:
@@ -84,11 +84,10 @@ def main():
     owner = component_data.get('owner')
     repo = component_data.get('repo')
     latest_version = component_data.get('latest_version')
-    repo_metadata = component_data.get('repo_metadata', {}).get(args.component)
+    repo_metadata = component_data.get('repo_metadata')
     release_url = f'https://github.com/{owner}/{repo}/releases/tag/{latest_version}'
     commits = get_version_commits(latest_version, repo_metadata)
     description = get_version_description(latest_version, repo_metadata)
-    formatted_description = format_description(description)
 
     # General info
     pr_body = f"""
@@ -97,15 +96,15 @@ def main():
 **URL**: [Release {latest_version}]({release_url})
 
         """
-    
+
     # Description
-    if formatted_description:
+    if description:
 
         pr_body += f"""
 #### Description:
-{formatted_description}
+{description}
         """
-    
+
     # Commits
     if commits:
         pr_commits = '\n<details>\n<summary>Commits</summary>\n\n'
@@ -118,7 +117,7 @@ def main():
             pr_commits += f'- [`{short_oid}`]({commit_url}) {commit_message}  \n'
         pr_commits += '\n</details>'
         pr_body += pr_commits
-    
+
     # Print body
     print(pr_body)
 
@@ -127,5 +126,5 @@ if __name__ == '__main__':
     parser.add_argument('--component', required=True, help='Specify the component to process')
     parser.add_argument('--description-number-of-lines', type=int, default=20, help='Number of lines to include from the description')
     args = parser.parse_args()
-    
+
     main()

@@ -680,4 +680,3 @@ system_upgrade_reboot: on-upgrade  # never, always
 
 # Enables or disables the scheduler plugins.
 scheduler_plugins_enabled: false
-

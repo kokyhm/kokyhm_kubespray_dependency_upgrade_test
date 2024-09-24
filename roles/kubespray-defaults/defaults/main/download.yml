@@ -1203,4 +1203,3 @@ download_defaults:
   unarchive: false
   owner: "{{ kube_owner }}"
   mode: None
-

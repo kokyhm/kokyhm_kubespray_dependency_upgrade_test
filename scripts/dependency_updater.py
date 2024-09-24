@@ -3,7 +3,6 @@ import re
 import sys
 import logging
 import requests
-import time
 import json
 import argparse
 import hashlib
@@ -63,22 +62,40 @@ def get_current_version(component, component_data):
         current_version = current_version.get(key)
     return current_version
 
-def get_latest_version(component, repo_metadata):
-    component_metadata = repo_metadata.get(component)
-    releases = component_metadata.get('releases', {}).get('nodes', [])
+def get_latest_version(component_repo_metadata):
+    releases = component_repo_metadata.get('releases', {}).get('nodes', [])
     for release in releases:
         if release.get('isLatest', False):
-            logging.debug(f"Component {component} latest version: {release['tagName']}")
             return release['tagName']
-    
-    tags = component_metadata.get('refs', {}).get('nodes', [])
+    tags = component_repo_metadata.get('refs', {}).get('nodes', []) # fallback on tags
     if tags:
         first_tag = tags[0]['name']
-        logging.debug(f"Component {component} latest version: {first_tag}")
         return first_tag
-
-    logging.error(f"Component {component} latest version: No releases or tags found.")
     return None
+
+def get_patch_versions(latest_version, component_repo_metadata):
+    match = re.match(r'v?(\d+)\.(\d+)', latest_version)
+    if not match:
+        logging.error(f'Invalid version format: {latest_version}')
+        return []
+    major_version, minor_version = match.groups()
+    patch_versions = []
+    stable_version_pattern = re.compile(rf'^v?{major_version}\.{minor_version}(\.\d+)?$') # no rc, alpha, dev, etc.
+    # Search releases
+    releases = component_repo_metadata.get('releases', {}).get('nodes', [])
+    for release in releases:
+        version = release.get('tagName', '')
+        if stable_version_pattern.match(version):
+            patch_versions.append(version)
+    # Fallback to tags
+    if not patch_versions:
+        tags = component_repo_metadata.get('refs', {}).get('nodes', [])
+        for tag in tags:
+            version = tag.get('name', '')
+            if stable_version_pattern.match(version):
+                patch_versions.append(version)
+    patch_versions.sort(key=lambda v: list(map(int, re.findall(r'\d+', v)))) # sort for checksum update
+    return patch_versions
 
 def get_repository_metadata(component_info, session):
     query_parts = []
@@ -131,24 +148,24 @@ def get_repository_metadata(component_info, session):
                     }}
                 }}
             }}
-        """)    
-    
+        """)
+
     query = f"query {{ {''.join(query_parts)} }}"
     headers = {
         'Authorization': f'Bearer {gh_token}',
         'Content-Type': 'application/json'
     }
-    
+
     try:
         response = session.post(github_api_url, json={'query': query}, headers=headers)
         response.raise_for_status()
         json_data = response.json()
         data = json_data.get('data')
         if data is not None and bool(data):  # Ensure 'data' is not None and not empty
-            logging.debug(f"GraphQL data response:\n{json.dumps(data, indent=2)}")
+            logging.debug(f'GraphQL data response:\n{json.dumps(data, indent=2)}')
             return data
         else:
-            logging.error(f"GraphQL query returned errors: {json_data}")
+            logging.error(f'GraphQL query returned errors: {json_data}')
             return None
     except Exception as e:
         logging.error(f'Error fetching repository metadata: {e}')
@@ -191,43 +208,45 @@ def download_file_and_get_checksum(component, arch, url_download, session):
         logging.error(e)
         return None
 
-def get_checksums(component, component_data, version, session):
+def get_checksums(component, component_data, versions, session):
     checksums = {}
-    url_download_template = component_data['url_download'].replace('VERSION', version)
-    if component_data['checksum_structure'] == 'os_arch':
-        # OS -> Arch -> Checksum
-        for os_name in oses:
-            checksums[os_name] = {}
+    for version in versions:
+        version = process_version_string(component, version)
+        url_download_template = component_data['url_download'].replace('VERSION', version)
+        if component_data['checksum_structure'] == 'os_arch':
+            # OS -> Arch -> Checksum
+            for os_name in oses:
+                checksums[os_name] = {}
+                for arch in architectures:
+                    url_download = url_download_template.replace('OS', os_name).replace('ARCH', arch)
+                    checksum = download_file_and_get_checksum(component, arch, url_download, session)
+                    if not checksum:
+                        checksum = 0
+                    checksums[version][os_name][arch] = checksum
+        elif component_data['checksum_structure'] == 'arch':
+            # Arch -> Checksum
             for arch in architectures:
-                url_download = url_download_template.replace('OS', os_name).replace('ARCH', arch)
+                url_download = url_download_template.replace('ARCH', arch)
                 checksum = download_file_and_get_checksum(component, arch, url_download, session)
                 if not checksum:
                     checksum = 0
-                checksums[os_name][arch] = checksum
-    elif component_data['checksum_structure'] == 'arch':
-        # Arch -> Checksum
-        for arch in architectures:
-            url_download = url_download_template.replace('ARCH', arch)
-            checksum = download_file_and_get_checksum(component, arch, url_download, session)
+                checksums[version][arch] = checksum
+        elif component_data['checksum_structure'] == 'simple':
+            # Checksum
+            checksum = download_file_and_get_checksum(component, '', url_download_template, session)
             if not checksum:
                 checksum = 0
-            checksums[arch] = checksum
-    elif component_data['checksum_structure'] == 'simple':
-        # Checksum
-        checksum = download_file_and_get_checksum(component, '', url_download_template, session)
-        if not checksum:
-            checksum = 0
-        checksums[version] = checksum
+            checksums[version] = checksum
     return checksums
 
 def update_yaml_checksum(component_data, checksums, version):
     placeholder_checksum = component_data['placeholder_checksum']
     checksum_structure = component_data['checksum_structure']
     current = checksum_yaml_data[placeholder_checksum]
-    if checksum_structure == 'simple': 
+    if checksum_structure == 'simple':
         # Simple structure (placeholder_checksum -> version -> checksum)
         current[(version)] = checksums[version]
-    elif checksum_structure == 'os_arch':  
+    elif checksum_structure == 'os_arch':
         # OS structure (placeholder_checksum -> os -> arch -> version -> checksum)
         for os_name, arch_dict in checksums.items():
             os_current = current.setdefault(os_name, {})
@@ -259,7 +278,7 @@ def update_yaml_version(component, component_data, version):
     placeholder_version = component_data['placeholder_version']
     resolved_version = resolve_kube_dependent_component_version(component, component_data, version)
     updated_placeholder = [
-        resolved_version if item == 'kube_major_version' else item 
+        resolved_version if item == 'kube_major_version' else item
         for item in placeholder_version
     ]
     current = download_yaml_data
@@ -281,7 +300,7 @@ def update_readme(component, version):
     for i, line in enumerate(readme_data):
         if component in line and re.search(r'v\d+\.\d+\.\d+', line):
             readme_data[i] = re.sub(r'v\d+\.\d+\.\d+', version, line)
-            logging.info(f"Updated {component} to {version} in README")
+            logging.info(f'Updated {component} to {version} in README')
             break
     return readme_data
 
@@ -319,7 +338,7 @@ def save_yaml_file(yaml_file, data):
     except Exception as e:
         logging.error(f'Failed to save {yaml_file}: {e}')
         return False
-    
+
 def open_readme(path_readme):
     try:
         with open(path_readme, 'r') as f:
@@ -335,7 +354,7 @@ def save_readme(path_readme):
     except Exception as e:
         logging.error(f'Failed to save {path_readme}: {e}')
         return False
-    
+
 def process_version_string(component, version):
     if component in ['youki', 'nerdctl', 'cri_dockerd', 'containerd']:
         if version.startswith('v'):
@@ -349,11 +368,12 @@ def process_version_string(component, version):
 def get_major_minor_version(version):
     match = re.match(r'^(v\d+)\.(\d+)', version)
     if match:
-        return f"{match.group(1)}.{match.group(2)}"
+        return f'{match.group(1)}.{match.group(2)}'
     return version
 
 def process_component(component, component_data, repo_metadata, session):
     logging.info(f'Processing component: {component}')
+    component_repo_metada = repo_metadata.get(component, {})
 
     # Get current kube version
     kube_version = main_yaml_data.get('kube_version')
@@ -368,16 +388,20 @@ def process_component(component, component_data, repo_metadata, session):
         return
 
     # Get latest component version
-    latest_version = get_latest_version(component, repo_metadata)
+    latest_version = get_latest_version(component_repo_metada)
     if not latest_version:
         logging.info(f'Stop processing component {component}, latest version unknown.')
         return
-    
+
     # Basic logging
     if current_version == latest_version:
         logging.info(f'Component {component}, version {current_version} is up to date')
     else:
         logging.info(f'Component {component} version discrepancy, current={current_version}, latest={latest_version}')
+
+    # Get patch versions
+    patch_versions = get_patch_versions(latest_version, component_repo_metada)
+    logging.info(f'Component {component} patch versions: {patch_versions}')
 
     # CI - write data and return
     if args.ci_check:
@@ -388,22 +412,22 @@ def process_component(component, component_data, repo_metadata, session):
             # used in generate_pr_body.py script
             'owner' : component_data['owner'],
             'repo' : component_data['repo'],
-            'repo_metadata' : repo_metadata,
+            'repo_metadata' : component_repo_metada,
         }
         return
-    
+
     # Handle skip_checksum script argument
     if args.skip_checksum:
-        logging.info(f'Stop processing component {component} due to script argument.')
+        logging.info(f'Stop processing component {component} due to skip_checksum script argument.')
         return
-    
-    # Process version string, remove v, etc.
-    latest_version = process_version_string(component, latest_version)
-    
+
     # Get checksums
-    checksums = get_checksums(component, component_data, latest_version, session)
+    checksums = get_checksums(component, component_data, patch_versions, session)
     # Update checksums
-    update_yaml_checksum(component_data, checksums, latest_version)
+    for version in patch_versions:
+        version = process_version_string(component, version)
+        version_checksum = checksums[version]
+        update_yaml_checksum(component_data, version_checksum, version)
 
     # Update version in configuration
     if component not in ['kubeadm', 'kubectl', 'kubelet']: # kubernetes dependent components
@@ -428,6 +452,8 @@ def main():
     # Setup session with retries
     session = get_session_with_retries()
 
+
+
     # Load configuration files
     global main_yaml_data, checksum_yaml_data, download_yaml_data, readme_data, version_diff
     main_yaml_data = load_yaml_file(path_main)
@@ -438,7 +464,7 @@ def main():
         logging.error(f'Failed to open one or more configuration files, current working directory is {pwd}. Exiting...')
         sys.exit(1)
 
-    # CI -create JSON file for version discrepancies
+    # CI - create version_diff file
     if args.ci_check:
         version_diff = create_json_file(path_version_diff)
         if version_diff is None:
@@ -469,7 +495,7 @@ def main():
             for component, component_data in component_info.items():
                 futures.append(executor.submit(process_component, component, component_data, repo_metadata, session))
             for future in futures:
-                future.result()        
+                future.result()
 
     # CI - save JSON file
     if args.ci_check:
