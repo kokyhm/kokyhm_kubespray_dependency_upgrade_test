@@ -211,6 +211,7 @@ def download_file_and_get_checksum(component, arch, url_download, session):
 def get_checksums(component, component_data, versions, session):
     checksums = {}
     for version in versions:
+        checksums[version] = {}
         version = process_version_string(component, version)
         url_download_template = component_data['url_download'].replace('VERSION', version)
         if component_data['checksum_structure'] == 'os_arch':
