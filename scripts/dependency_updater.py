@@ -192,8 +192,8 @@ def calculate_checksum(cachefile, arch, url_download):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
-def download_file_and_get_checksum(component, arch, url_download, session):
-    cache_file = f'{component}-{arch}'
+def download_file_and_get_checksum(component, arch, url_download, version, session):
+    cache_file = f'{component}-{arch}-{version}'
     if os.path.exists(f'cache/{cache_file}'):
         logging.info(f'Using cached file for {url_download}')
         return calculate_checksum(cache_file, arch, url_download)
@@ -220,7 +220,7 @@ def get_checksums(component, component_data, versions, session):
                 checksums[os_name] = {}
                 for arch in architectures:
                     url_download = url_download_template.replace('OS', os_name).replace('ARCH', arch)
-                    checksum = download_file_and_get_checksum(component, arch, url_download, session)
+                    checksum = download_file_and_get_checksum(component, arch, url_download, version, session)
                     if not checksum:
                         checksum = 0
                     checksums[version][os_name][arch] = checksum
@@ -228,13 +228,13 @@ def get_checksums(component, component_data, versions, session):
             # Arch -> Checksum
             for arch in architectures:
                 url_download = url_download_template.replace('ARCH', arch)
-                checksum = download_file_and_get_checksum(component, arch, url_download, session)
+                checksum = download_file_and_get_checksum(component, arch, url_download, version, session)
                 if not checksum:
                     checksum = 0
                 checksums[version][arch] = checksum
         elif component_data['checksum_structure'] == 'simple':
             # Checksum
-            checksum = download_file_and_get_checksum(component, '', url_download_template, session)
+            checksum = download_file_and_get_checksum(component, '', url_download_template, version, session)
             if not checksum:
                 checksum = 0
             checksums[version] = checksum
@@ -257,7 +257,7 @@ def update_yaml_checksum(component_data, checksums, version):
         # Arch structure (placeholder_checksum -> arch -> version -> checksum)
         for arch, checksum in checksums.items():
             current[arch] = {(version): checksum, **current.get(arch, {})}
-    logging.info(f'Updated {placeholder_checksum} with {checksums}')
+    logging.info(f'Updated {placeholder_checksum} with version {version} and checksums {checksums}')
 
 def resolve_kube_dependent_component_version(component, component_data, version):
     kube_major_version = component_data['kube_major_version']
