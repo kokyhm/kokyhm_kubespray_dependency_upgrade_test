@@ -190,7 +190,7 @@ def calculate_checksum(cachefile, arch, url_download):
         with open(f'cache/{cachefile}', 'r') as f:
             for line in f:
                 if 'SHA256' in line and 'linux' in line and arch in line:
-                    return line.strip().split()[0]
+                    return line.split('=')[1].strip()
     sha256_hash = hashlib.sha256()
     with open(f'cache/{cachefile}', 'rb') as f:
         for byte_block in iter(lambda: f.read(4096), b''):
@@ -251,7 +251,7 @@ def update_yaml_checksum(component_data, checksums, version):
     current = checksum_yaml_data[placeholder_checksum]
     if checksum_structure == 'simple':
         # Simple structure (placeholder_checksum -> version -> checksum)
-        current[(version)] = checksums[version]
+        current[(version)] = checksums
     elif checksum_structure == 'os_arch':
         # OS structure (placeholder_checksum -> os -> arch -> version -> checksum)
         for os_name, arch_dict in checksums.items():
@@ -482,6 +482,7 @@ def main():
         if args.component in component_info:
             specific_component_info = {args.component: component_info[args.component]}
             # Get repository metadata => releases, tags and commits
+            logging.info(f'Fetching repository metadata for the component {args.component}')
             repo_metadata = get_repository_metadata(specific_component_info, session)
             if not repo_metadata:
                 sys.exit(1)
@@ -492,6 +493,7 @@ def main():
     # Process all components in the configuration file concurrently
     else:
         # Get repository metadata => releases, tags and commits
+        logging.info('Fetching repository metadata for all components')
         repo_metadata = get_repository_metadata(component_info, session)
         if not repo_metadata:
             sys.exit(1)
