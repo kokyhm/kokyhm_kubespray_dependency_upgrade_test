@@ -18,7 +18,6 @@ component_info = {
         'placeholder_version': ['calico_version'],
         'placeholder_checksum' : 'calico_crds_archive_checksums',
         'checksum_structure' : 'simple',
-        'release_type' : 'release',
         },
     'calicoctl': {
         'owner': 'projectcalico',
@@ -27,7 +26,6 @@ component_info = {
         'placeholder_version': ['calico_version'],
         'placeholder_checksum' : 'calicoctl_binary_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'ciliumcli': {
         'owner': 'cilium',
@@ -36,7 +34,6 @@ component_info = {
         'placeholder_version': ['cilium_cli_version'],
         'placeholder_checksum' : 'ciliumcli_binary_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'cni': {
         'owner': 'containernetworking',
@@ -45,7 +42,6 @@ component_info = {
         'placeholder_version': ['cni_version'],
         'placeholder_checksum' : 'cni_binary_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'containerd': {
         'owner': 'containerd',
@@ -54,7 +50,6 @@ component_info = {
         'placeholder_version': ['containerd_version'],
         'placeholder_checksum' : 'containerd_archive_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'crictl': {
         'owner': 'kubernetes-sigs',
@@ -63,7 +58,6 @@ component_info = {
         'placeholder_version': ['crictl_supported_versions', 'kube_major_version'],
         'placeholder_checksum' : 'crictl_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'cri_dockerd': {
         'owner': 'Mirantis',
@@ -72,7 +66,6 @@ component_info = {
         'placeholder_version': ['cri_dockerd_version'],
         'placeholder_checksum' : 'cri_dockerd_archive_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'crio': {
         'owner': 'cri-o',
@@ -81,7 +74,6 @@ component_info = {
         'placeholder_version': ['crio_supported_versions', 'kube_major_version'],
         'placeholder_checksum' : 'crio_archive_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'crun': {
         'owner': 'containers',
@@ -90,7 +82,6 @@ component_info = {
         'placeholder_version': ['crun_version'],
         'placeholder_checksum' : 'crun_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'etcd': {
         'owner': 'etcd-io',
@@ -99,7 +90,6 @@ component_info = {
         'placeholder_version': ['etcd_supported_versions', 'kube_major_version'],
         'placeholder_checksum' : 'etcd_binary_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'gvisor_containerd_shim': {
         'owner': 'google',
@@ -108,7 +98,6 @@ component_info = {
         'placeholder_version': ['gvisor_version'],
         'placeholder_checksum' : 'gvisor_containerd_shim_binary_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'tag',
         },
     'gvisor_runsc': {
         'owner': 'google',
@@ -117,7 +106,6 @@ component_info = {
         'placeholder_version': ['gvisor_version'],
         'placeholder_checksum' : 'gvisor_runsc_binary_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'tag',
         },
     'helm': {
         'owner': 'helm',
@@ -126,7 +114,6 @@ component_info = {
         'placeholder_version': ['helm_version'],
         'placeholder_checksum' : 'helm_archive_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
 
     'kata_containers': {
@@ -136,7 +123,6 @@ component_info = {
         'placeholder_version': ['kata_containers_version'],
         'placeholder_checksum' : 'kata_containers_binary_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'krew': {
         'owner': 'kubernetes-sigs',
@@ -145,7 +131,6 @@ component_info = {
         'placeholder_version': ['krew_version'],
         'placeholder_checksum' : 'krew_archive_checksums',
         'checksum_structure' : 'os_arch',
-        'release_type' : 'release',
         },
     'kubeadm': {
         'owner': 'kubernetes',
@@ -154,7 +139,6 @@ component_info = {
         'placeholder_version': ['kube_version'],
         'placeholder_checksum' : 'kubeadm_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'kubectl': {
         'owner': 'kubernetes',
@@ -163,7 +147,6 @@ component_info = {
         'placeholder_version': ['kube_version'],
         'placeholder_checksum' : 'kubectl_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'kubelet': {
         'owner': 'kubernetes',
@@ -172,7 +155,6 @@ component_info = {
         'placeholder_version': ['kube_version'],
         'placeholder_checksum' : 'kubelet_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'nerdctl': {
         'owner': 'containerd',
@@ -181,7 +163,6 @@ component_info = {
         'placeholder_version': ['nerdctl_version'],
         'placeholder_checksum' : 'nerdctl_archive_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'runc': {
         'owner': 'opencontainers',
@@ -190,7 +171,6 @@ component_info = {
         'placeholder_version': ['runc_version'],
         'placeholder_checksum' : 'runc_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'skopeo': {
         'owner': 'containers',
@@ -199,7 +179,6 @@ component_info = {
         'placeholder_version': ['skopeo_version'],
         'placeholder_checksum' : 'skopeo_binary_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'youki': {
         'owner': 'containers',
@@ -208,7 +187,6 @@ component_info = {
         'placeholder_version': ['youki_version'],
         'placeholder_checksum' : 'youki_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
     'yq': {
         'owner': 'mikefarah',
@@ -217,6 +195,5 @@ component_info = {
         'placeholder_version': ['yq_version'],
         'placeholder_checksum' : 'yq_checksums',
         'checksum_structure' : 'arch',
-        'release_type' : 'release',
         },
 }
