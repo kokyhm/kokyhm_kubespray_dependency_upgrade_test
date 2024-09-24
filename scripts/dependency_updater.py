@@ -174,18 +174,23 @@ def get_repository_metadata(component_info, session):
 def calculate_checksum(cachefile, arch, url_download):
     if url_download.endswith('.sha256sum'):
         with open(f'cache/{cachefile}', 'r') as f:
-            checksum_line = f.readline().strip()
-            return checksum_line.split()[0]
+            lines = f.readlines()
+            if len(lines) == 1:
+                checksum_line = lines[0].strip()
+                return checksum_line.split()[0]
+            for line in lines:
+                if arch in line:
+                    return line.strip().split()[0]
     elif url_download.endswith('SHA256SUMS'):
         with open(f'cache/{cachefile}', 'r') as f:
             for line in f:
                 if 'linux' in line and arch in line:
-                    return line.split()[0]
+                    return line.strip().split()[0]
     elif url_download.endswith('bsd'):
         with open(f'cache/{cachefile}', 'r') as f:
             for line in f:
                 if 'SHA256' in line and 'linux' in line and arch in line:
-                    return line.split()[0]
+                    return line.strip().split()[0]
     sha256_hash = hashlib.sha256()
     with open(f'cache/{cachefile}', 'rb') as f:
         for byte_block in iter(lambda: f.read(4096), b''):
