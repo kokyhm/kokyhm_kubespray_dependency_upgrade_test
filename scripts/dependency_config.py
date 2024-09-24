@@ -1,16 +1,14 @@
-# Arhitectures and OSes
-architectures = ['arm', 'arm64', 'amd64', 'ppc64le']
-oses = ['darwin', 'linux', 'windows']
+ARCHITECTURES = ['arm', 'arm64', 'amd64', 'ppc64le']
+OSES = ['darwin', 'linux', 'windows']
+README_COMPONENTS = ['etcd', 'containerd', 'crio', 'calicoctl', 'krew', 'helm']
 
-# Paths
-path_download = 'roles/kubespray-defaults/defaults/main/download.yml'
-path_checksum = 'roles/kubespray-defaults/defaults/main/checksums.yml'
-path_main = 'roles/kubespray-defaults/defaults/main/main.yml'
-path_readme = 'README.md'
-path_version_diff = 'version_diff.json'
+PATH_DOWNLOAD = 'roles/kubespray-defaults/defaults/main/download.yml'
+PATH_CHECKSUM = 'roles/kubespray-defaults/defaults/main/checksums.yml'
+PATH_MAIN = 'roles/kubespray-defaults/defaults/main/main.yml'
+PATH_README = 'README.md'
+PATH_VERSION_DIFF = 'version_diff.json'
 
-
-component_info = {
+COMPONENT_INFO = {
     'calico_crds': {
         'owner': 'projectcalico',
         'repo': 'calico',

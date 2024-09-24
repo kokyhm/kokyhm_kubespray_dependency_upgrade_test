@@ -10,7 +10,7 @@ from ruamel.yaml import YAML
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
-from dependency_config import component_info, architectures, oses, path_download, path_checksum, path_main, path_readme, path_version_diff
+from dependency_config import ARCHITECTURES, OSES, README_COMPONENTS, PATH_DOWNLOAD, PATH_CHECKSUM, PATH_MAIN, PATH_README, PATH_VERSION_DIFF, COMPONENT_INFO
 
 
 yaml = YAML()
@@ -216,53 +216,50 @@ def download_file_and_get_checksum(component, arch, url_download, version, sessi
 def get_checksums(component, component_data, versions, session):
     checksums = {}
     for version in versions:
+        processed_version = process_version_string(component, version)
         checksums[version] = {}
-        version = process_version_string(component, version)
-        url_download_template = component_data['url_download'].replace('VERSION', version)
+        url_download_template = component_data['url_download'].replace('VERSION', processed_version)
         if component_data['checksum_structure'] == 'os_arch':
             # OS -> Arch -> Checksum
-            for os_name in oses:
-                checksums[os_name] = {}
-                for arch in architectures:
+            for os_name in OSES:
+                if os_name not in checksums[version]:
+                    checksums[version][os_name] = {}
+                for arch in ARCHITECTURES:
                     url_download = url_download_template.replace('OS', os_name).replace('ARCH', arch)
-                    checksum = download_file_and_get_checksum(component, arch, url_download, version, session)
-                    if not checksum:
-                        checksum = 0
+                    checksum = download_file_and_get_checksum(component, arch, url_download, processed_version, session) or 0
                     checksums[version][os_name][arch] = checksum
         elif component_data['checksum_structure'] == 'arch':
             # Arch -> Checksum
-            for arch in architectures:
+            for arch in ARCHITECTURES:
                 url_download = url_download_template.replace('ARCH', arch)
-                checksum = download_file_and_get_checksum(component, arch, url_download, version, session)
-                if not checksum:
-                    checksum = 0
+                checksum = download_file_and_get_checksum(component, arch, url_download, processed_version, session) or 0
                 checksums[version][arch] = checksum
         elif component_data['checksum_structure'] == 'simple':
             # Checksum
-            checksum = download_file_and_get_checksum(component, '', url_download_template, version, session)
-            if not checksum:
-                checksum = 0
-            checksums[version] = checksum
+            checksum = download_file_and_get_checksum(component, '', url_download_template, processed_version, session) or 0
+            checksums[version] = checksum  # Store checksum for the version
     return checksums
 
-def update_yaml_checksum(component_data, checksums, version):
+def update_yaml_checksum(component, component_data, checksums, version):
+    processed_version = process_version_string(component, version)
     placeholder_checksum = component_data['placeholder_checksum']
     checksum_structure = component_data['checksum_structure']
     current = checksum_yaml_data[placeholder_checksum]
+
     if checksum_structure == 'simple':
         # Simple structure (placeholder_checksum -> version -> checksum)
-        current[(version)] = checksums
+        current[(processed_version)] = checksums
     elif checksum_structure == 'os_arch':
         # OS structure (placeholder_checksum -> os -> arch -> version -> checksum)
         for os_name, arch_dict in checksums.items():
             os_current = current.setdefault(os_name, {})
             for arch, checksum in arch_dict.items():
-                os_current[arch] = {(version): checksum, **os_current.get(arch, {})}
+                os_current[arch] = {(processed_version): checksum, **os_current.get(arch, {})}
     elif checksum_structure == 'arch':
         # Arch structure (placeholder_checksum -> arch -> version -> checksum)
         for arch, checksum in checksums.items():
-            current[arch] = {(version): checksum, **current.get(arch, {})}
-    logging.info(f'Updated {placeholder_checksum} with version {version} and checksums {checksums}')
+            current[arch] = {(processed_version): checksum, **current.get(arch, {})}
+    logging.info(f'Updated {placeholder_checksum} with version {processed_version} and checksums {checksums}')
 
 def resolve_kube_dependent_component_version(component, component_data, version):
     kube_major_version = component_data['kube_major_version']
@@ -398,12 +395,13 @@ def process_component(component, component_data, repo_metadata, session):
     if not latest_version:
         logging.info(f'Stop processing component {component}, latest version unknown.')
         return
+    processed_latest_version = process_version_string(component, latest_version) # kubespray version
 
-    # Basic logging
-    if current_version == latest_version:
+    # Log version comparison
+    if current_version == processed_latest_version:
         logging.info(f'Component {component}, version {current_version} is up to date')
     else:
-        logging.info(f'Component {component} version discrepancy, current={current_version}, latest={latest_version}')
+        logging.info(f'Component {component} version discrepancy, current={current_version}, latest={processed_latest_version}')
 
     # Get patch versions
     patch_versions = get_patch_versions(latest_version, component_repo_metada)
@@ -414,7 +412,7 @@ def process_component(component, component_data, repo_metadata, session):
         version_diff[component] = {
             # used in dependecy-check.yml workflow
             'current_version' : current_version,
-            'latest_version' : latest_version,
+            'latest_version' : processed_latest_version,
             # used in generate_pr_body.py script
             'owner' : component_data['owner'],
             'repo' : component_data['repo'],
@@ -422,34 +420,25 @@ def process_component(component, component_data, repo_metadata, session):
         }
         return
 
-    # Handle skip_checksum script argument
-    if args.skip_checksum:
-        logging.info(f'Stop processing component {component} due to skip_checksum script argument.')
-        return
-
     # Get checksums
     checksums = get_checksums(component, component_data, patch_versions, session)
     # Update checksums
     for version in patch_versions:
-        version = process_version_string(component, version)
-        version_checksum = checksums[version]
-        update_yaml_checksum(component_data, version_checksum, version)
+        version_checksum = checksums.get(version)
+        update_yaml_checksum(component, component_data, version_checksum, version)
 
     # Update version in configuration
     if component not in ['kubeadm', 'kubectl', 'kubelet']: # kubernetes dependent components
-        update_yaml_version(component, component_data, latest_version)
+        update_yaml_version(component, component_data, processed_latest_version)
 
     # Update version in README
-    if component in ['etcd', 'containerd', 'crio', 'calicoctl', 'krew', 'helm']: # in README
+    if component in README_COMPONENTS:
         if component in ['crio', 'crictl']:
-            component_major_minor_version = get_major_minor_version(latest_version)
+            component_major_minor_version = get_major_minor_version(processed_latest_version)
             if component_major_minor_version != kube_major_version: # do not update README, we just added checksums
-                return
-            component = component.replace('crio', 'cri-o')
-        elif component == 'containerd':
-            latest_version = f'v{latest_version}'
-        elif component == 'calicoctl':
-            component = component.replace('calicoctl', 'calico')
+                return 
+        # replace component name to fit readme
+        component = component.replace('crio', 'cri-o').replace('calicoctl', 'calico')
         update_readme(component, latest_version)
 
 def main():
@@ -458,35 +447,33 @@ def main():
     # Setup session with retries
     session = get_session_with_retries()
 
-
-
     # Load configuration files
     global main_yaml_data, checksum_yaml_data, download_yaml_data, readme_data, version_diff
-    main_yaml_data = load_yaml_file(path_main)
-    checksum_yaml_data = load_yaml_file(path_checksum)
-    download_yaml_data = load_yaml_file(path_download)
-    readme_data = open_readme(path_readme)
+    main_yaml_data = load_yaml_file(PATH_MAIN)
+    checksum_yaml_data = load_yaml_file(PATH_CHECKSUM)
+    download_yaml_data = load_yaml_file(PATH_DOWNLOAD)
+    readme_data = open_readme(PATH_README)
     if not (main_yaml_data and checksum_yaml_data and download_yaml_data and readme_data):
         logging.error(f'Failed to open one or more configuration files, current working directory is {pwd}. Exiting...')
         sys.exit(1)
 
     # CI - create version_diff file
     if args.ci_check:
-        version_diff = create_json_file(path_version_diff)
+        version_diff = create_json_file(PATH_VERSION_DIFF)
         if version_diff is None:
-            logging.error(f'Failed to create version_diff.json file')
+            logging.error(f'Failed to create {PATH_VERSION_DIFF} file')
             sys.exit(1)
 
     # Process single component
     if args.component != 'all':
-        if args.component in component_info:
-            specific_component_info = {args.component: component_info[args.component]}
+        if args.component in COMPONENT_INFO:
+            specific_component_info = {args.component: COMPONENT_INFO[args.component]}
             # Get repository metadata => releases, tags and commits
             logging.info(f'Fetching repository metadata for the component {args.component}')
             repo_metadata = get_repository_metadata(specific_component_info, session)
             if not repo_metadata:
                 sys.exit(1)
-            process_component(args.component, component_info[args.component], repo_metadata, session)
+            process_component(args.component, COMPONENT_INFO[args.component], repo_metadata, session)
         else:
             logging.error(f'Component {args.component} not found in config.')
             sys.exit(1)
@@ -494,25 +481,25 @@ def main():
     else:
         # Get repository metadata => releases, tags and commits
         logging.info('Fetching repository metadata for all components')
-        repo_metadata = get_repository_metadata(component_info, session)
+        repo_metadata = get_repository_metadata(COMPONENT_INFO, session)
         if not repo_metadata:
             sys.exit(1)
         with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
             futures = []
             logging.info(f'Running with {executor._max_workers} executors')
-            for component, component_data in component_info.items():
+            for component, component_data in COMPONENT_INFO.items():
                 futures.append(executor.submit(process_component, component, component_data, repo_metadata, session))
             for future in futures:
                 future.result()
 
     # CI - save JSON file
     if args.ci_check:
-        save_json_file(path_version_diff, version_diff)
+        save_json_file(PATH_VERSION_DIFF, version_diff)
     # Save configurations
     else:
-        save_yaml_file(path_checksum, checksum_yaml_data)
-        save_yaml_file(path_download, download_yaml_data)
-        save_readme(path_readme)
+        save_yaml_file(PATH_CHECKSUM, checksum_yaml_data)
+        save_yaml_file(PATH_DOWNLOAD, download_yaml_data)
+        save_readme(PATH_README)
 
 
 if __name__ == '__main__':
@@ -520,7 +507,6 @@ if __name__ == '__main__':
     parser.add_argument('--loglevel', default='INFO', help='Set the log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
     parser.add_argument('--component', default='all', help='Specify a component to process, default is all components')
     parser.add_argument('--max-workers', type=int, default=4, help='Maximum number of concurrent workers, use with caution(sometimes less is more)')
-    parser.add_argument('--skip-checksum', action='store_true', help='Skip checksum if the current version is up to date')
     parser.add_argument('--ci-check', action='store_true', help='Check versions, store discrepancies in version_diff.json')
     parser.add_argument('--graphql-number-of-entries', type=int, default=10, help='Number of releases/tags to retrieve from Github GraphQL per component (default: 10)')
     parser.add_argument('--graphql-number-of-commits', type=int, default=5, help='Number of commits to retrieve from Github GraphQL per tag (default: 5)')
