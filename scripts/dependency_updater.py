@@ -424,7 +424,7 @@ def process_component(component, component_data, repo_metadata, session):
         version_diff[component] = {
             # used in dependecy-check.yml workflow
             'current_version' : current_version,
-            'latest_version' : processed_latest_version,
+            'latest_version' : latest_version,
             # used in generate_pr_body.py script
             'owner' : component_data['owner'],
             'repo' : component_data['repo'],
