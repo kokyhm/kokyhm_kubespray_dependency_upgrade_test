@@ -176,10 +176,10 @@ def calculate_checksum(cachefile, sha_regex):
         logging.debug(f'Searching with regex {sha_regex} in file {cachefile}')
         with open(f'cache/{cachefile}', 'r') as f:
             for line in f:
-                if sha_regex == 'simple': # only sha is present in the file
+                if sha_regex == 'simple': # Only sha is present in the file
                     pattern = re.compile(SHA256REGEX)
                 else:
-                    pattern = re.compile(rf'(?:{SHA256REGEX}.*{sha_regex}|{sha_regex}.*{SHA256REGEX})')
+                    pattern = re.compile(rf'(?:{SHA256REGEX}.*{sha_regex}|{sha_regex}.*{SHA256REGEX})') # Sha may be at start or end
                 match = pattern.search(line)
                 if match:
                     checksum = match.group(1) or match.group(2)
@@ -190,7 +190,8 @@ def calculate_checksum(cachefile, sha_regex):
         with open(f'cache/{cachefile}', 'rb') as f:
             for byte_block in iter(lambda: f.read(4096), b''):
                 sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()
+        checksum = sha256_hash.hexdigest()
+        return checksum
     
 def download_file_and_get_checksum(component, arch, url_download, version, sha_regex, session):
     cache_file = f'{component}-{arch}-{version}'
@@ -210,7 +211,6 @@ def download_file_and_get_checksum(component, arch, url_download, version, sha_r
 
 def get_checksums(component, component_data, versions, session):
     checksums = {}
-
     for version in versions:
         processed_version = process_version_string(component, version)
         checksums[version] = {}
@@ -228,8 +228,11 @@ def get_checksums(component, component_data, versions, session):
         elif component_data['checksum_structure'] == 'arch':
             # Arch -> Checksum
             for arch in ARCHITECTURES:
-                url_download = url_download_template.format(arch=arch, version=processed_version)
-                sha_regex = component_data.get('sha_regex').format(arch=arch)
+                tmp_arch = arch
+                if component == 'youki':
+                    tmp_arch = tmp_arch.replace('arm64', 'aarch64-gnu').replace('amd64', 'x86_64-gnu')
+                url_download = url_download_template.format(arch=tmp_arch, version=processed_version)
+                sha_regex = component_data.get('sha_regex').format(arch=tmp_arch)
                 checksum = download_file_and_get_checksum(component, arch, url_download, processed_version, sha_regex, session) or 0
                 checksums[version][arch] = checksum
         elif component_data['checksum_structure'] == 'simple':
@@ -240,7 +243,7 @@ def get_checksums(component, component_data, versions, session):
             checksums[version] = checksum  # Store checksum for the version
     return checksums
 
-def update_yaml_checksum(component, component_data, checksums, version):
+def update_checksum(component, component_data, checksums, version):
     processed_version = process_version_string(component, version)
     placeholder_checksum = component_data['placeholder_checksum']
     checksum_structure = component_data['checksum_structure']
@@ -248,7 +251,7 @@ def update_yaml_checksum(component, component_data, checksums, version):
 
     if checksum_structure == 'simple':
         # Simple structure (placeholder_checksum -> version -> checksum)
-        current[(processed_version)] = checksums
+        checksum_yaml_data[placeholder_checksum] = {processed_version: checksums, **current}
     elif checksum_structure == 'os_arch':
         # OS structure (placeholder_checksum -> os -> arch -> version -> checksum)
         for os_name, arch_dict in checksums.items():
@@ -265,11 +268,11 @@ def resolve_kube_dependent_component_version(component, component_data, version)
     kube_major_version = component_data['kube_major_version']
     if component in ['crictl', 'crio']:
         try:
-            component_major_minor_version = get_major_minor_version(version)
-            if component_major_minor_version == kube_major_version:
+            component_major_version = get_major_version(version)
+            if component_major_version == kube_major_version:
                 resolved_version = kube_major_version
             else:
-                resolved_version = component_major_minor_version
+                resolved_version = component_major_version
         except (IndexError, AttributeError):
             logging.error(f'Error parsing version for {component}: {version}')
             return
@@ -277,7 +280,7 @@ def resolve_kube_dependent_component_version(component, component_data, version)
         resolved_version = kube_major_version
     return resolved_version
 
-def update_yaml_version(component, component_data, version):
+def update_version(component, component_data, version):
     placeholder_version = component_data['placeholder_version']
     resolved_version = resolve_kube_dependent_component_version(component, component_data, version)
     updated_placeholder = [
@@ -307,6 +310,11 @@ def update_readme(component, version):
             break
     return readme_data
 
+def safe_save_files(file_path, data=None, save_func=None):
+    if not save_func(file_path, data):
+        logging.error(f'Failed to save file {file_path}')
+        sys.exit(1)
+
 def create_json_file(file_path):
     new_data = {}
     try:
@@ -332,12 +340,13 @@ def load_yaml_file(yaml_file):
             return yaml.load(f)
     except Exception as e:
         logging.error(f'Failed to load {yaml_file}: {e}')
-        return {}
+        return None
 
 def save_yaml_file(yaml_file, data):
     try:
         with open(yaml_file, 'w') as f:
             yaml.dump(data, f)
+        return True
     except Exception as e:
         logging.error(f'Failed to save {yaml_file}: {e}')
         return False
@@ -348,12 +357,13 @@ def open_readme(path_readme):
             return f.readlines()
     except Exception as e:
         logging.error(f'Failed to load {path_readme}: {e}')
-        return False
+        return None
 
-def save_readme(path_readme):
+def save_readme(path_readme, data):
     try:
         with open(path_readme, 'w') as f:
-            f.writelines(readme_data)
+            f.writelines(data)
+            return True
     except Exception as e:
         logging.error(f'Failed to save {path_readme}: {e}')
         return False
@@ -368,11 +378,11 @@ def process_version_string(component, version):
         version = match.group(1)
     return version
 
-def get_major_minor_version(version):
+def get_major_version(version):
     match = re.match(r'^(v\d+)\.(\d+)', version)
     if match:
         return f'{match.group(1)}.{match.group(2)}'
-    return version
+    return None
 
 def process_component(component, component_data, repo_metadata, session):
     logging.info(f'Processing component: {component}')
@@ -380,7 +390,7 @@ def process_component(component, component_data, repo_metadata, session):
 
     # Get current kube version
     kube_version = main_yaml_data.get('kube_version')
-    kube_major_version = get_major_minor_version(kube_version)
+    kube_major_version = get_major_version(kube_version)
     component_data['kube_version'] = kube_version  # needed for nested components
     component_data['kube_major_version'] = kube_major_version  # needed for nested components
 
@@ -395,17 +405,14 @@ def process_component(component, component_data, repo_metadata, session):
     if not latest_version:
         logging.info(f'Stop processing component {component}, latest version unknown.')
         return
-    processed_latest_version = process_version_string(component, latest_version) # kubespray version
+    # Kubespray version
+    processed_latest_version = process_version_string(component, latest_version)
 
     # Log version comparison
     if current_version == processed_latest_version:
         logging.info(f'Component {component}, version {current_version} is up to date')
     else:
         logging.info(f'Component {component} version discrepancy, current={current_version}, latest={processed_latest_version}')
-
-    # Get patch versions
-    patch_versions = get_patch_versions(latest_version, component_repo_metada)
-    logging.info(f'Component {component} patch versions: {patch_versions}')
 
     # CI - write data and return
     if args.ci_check:
@@ -420,22 +427,27 @@ def process_component(component, component_data, repo_metadata, session):
         }
         return
 
-    # Get checksums
+    # Get patch versions
+    patch_versions = get_patch_versions(latest_version, component_repo_metada)
+    logging.info(f'Component {component} patch versions: {patch_versions}')
+
+    # Get checksums for all patch versions
     checksums = get_checksums(component, component_data, patch_versions, session)
     # Update checksums
     for version in patch_versions:
         version_checksum = checksums.get(version)
-        update_yaml_checksum(component, component_data, version_checksum, version)
+        update_checksum(component, component_data, version_checksum, version)
 
     # Update version in configuration
     if component not in ['kubeadm', 'kubectl', 'kubelet']: # kubernetes dependent components
-        update_yaml_version(component, component_data, processed_latest_version)
+        if component != 'calico_crds': # TODO double check if only calicoctl may change calico_version
+            update_version(component, component_data, processed_latest_version)
 
     # Update version in README
     if component in README_COMPONENTS:
         if component in ['crio', 'crictl']:
-            component_major_minor_version = get_major_minor_version(processed_latest_version)
-            if component_major_minor_version != kube_major_version: # do not update README, we just added checksums
+            component_major_version = get_major_version(processed_latest_version)
+            if component_major_version != kube_major_version: # do not update README, we just added checksums
                 return 
         # replace component name to fit readme
         component = component.replace('crio', 'cri-o').replace('calicoctl', 'calico')
@@ -494,12 +506,15 @@ def main():
 
     # CI - save JSON file
     if args.ci_check:
-        save_json_file(PATH_VERSION_DIFF, version_diff)
+        safe_save_files(PATH_VERSION_DIFF, version_diff, save_json_file)
+        
     # Save configurations
     else:
-        save_yaml_file(PATH_CHECKSUM, checksum_yaml_data)
-        save_yaml_file(PATH_DOWNLOAD, download_yaml_data)
-        save_readme(PATH_README)
+        safe_save_files(PATH_CHECKSUM, checksum_yaml_data, save_yaml_file)
+        safe_save_files(PATH_DOWNLOAD, download_yaml_data, save_yaml_file)
+        safe_save_files(PATH_README, readme_data, save_readme)
+    
+    logging.info('Finished.')
 
 
 if __name__ == '__main__':
