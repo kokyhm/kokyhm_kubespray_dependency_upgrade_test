@@ -54,6 +54,9 @@ jobs:
           echo "pr_body<<EOF" >> $GITHUB_OUTPUT
           echo "$pr_body" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Cleanup cache and version_diff.json
+        run: rm -r cache/ version_diff.json
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
