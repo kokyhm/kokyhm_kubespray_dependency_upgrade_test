@@ -73,7 +73,9 @@ def get_latest_version(component_repo_metadata):
         return first_tag
     return None
 
-def get_patch_versions(latest_version, component_repo_metadata):
+def get_patch_versions(component, latest_version, component_repo_metadata):
+    if component in ['gvisor_runsc','gvisor_containerd_shim']: # hack for gvisor
+        return [latest_version]
     match = re.match(r'v?(\d+)\.(\d+)', latest_version)
     if not match:
         logging.error(f'Invalid version format: {latest_version}')
@@ -194,6 +196,7 @@ def calculate_checksum(cachefile, sha_regex):
         return checksum
     
 def download_file_and_get_checksum(component, arch, url_download, version, sha_regex, session):
+    logging.info(f'Download URL {url_download}')
     cache_file = f'{component}-{arch}-{version}'
     if os.path.exists(f'cache/{cache_file}'):
         logging.info(f'Using cached file for {url_download}')
@@ -231,6 +234,8 @@ def get_checksums(component, component_data, versions, session):
                 tmp_arch = arch
                 if component == 'youki':
                     tmp_arch = tmp_arch.replace('arm64', 'aarch64-gnu').replace('amd64', 'x86_64-gnu')
+                elif component in ['gvisor_containerd_shim','gvisor_runsc']:
+                    tmp_arch = tmp_arch.replace("arm64", "aarch64").replace("amd64", "x86_64")
                 url_download = url_download_template.format(arch=tmp_arch, version=processed_version)
                 sha_regex = component_data.get('sha_regex').format(arch=tmp_arch)
                 checksum = download_file_and_get_checksum(component, arch, url_download, processed_version, sha_regex, session) or 0
@@ -239,7 +244,7 @@ def get_checksums(component, component_data, versions, session):
             # Checksum
             url_download = url_download_template.format(version=processed_version)
             sha_regex = component_data.get('sha_regex')
-            checksum = download_file_and_get_checksum(component, '', url_download_template, processed_version, sha_regex, session) or 0
+            checksum = download_file_and_get_checksum(component, '', url_download, processed_version, sha_regex, session) or 0
             checksums[version] = checksum  # Store checksum for the version
     return checksums
 
@@ -428,7 +433,7 @@ def process_component(component, component_data, repo_metadata, session):
         return
 
     # Get patch versions
-    patch_versions = get_patch_versions(latest_version, component_repo_metada)
+    patch_versions = get_patch_versions(component, latest_version, component_repo_metada)
     logging.info(f'Component {component} patch versions: {patch_versions}')
 
     # Get checksums for all patch versions
