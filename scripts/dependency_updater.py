@@ -10,7 +10,7 @@ from ruamel.yaml import YAML
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
-from dependency_config import ARCHITECTURES, OSES, README_COMPONENTS, PATH_DOWNLOAD, PATH_CHECKSUM, PATH_MAIN, PATH_README, PATH_VERSION_DIFF, COMPONENT_INFO
+from dependency_config import ARCHITECTURES, OSES, README_COMPONENTS, PATH_DOWNLOAD, PATH_CHECKSUM, PATH_MAIN, PATH_README, PATH_VERSION_DIFF, COMPONENT_INFO, SHA256REGEX
 
 
 yaml = YAML()
@@ -171,72 +171,72 @@ def get_repository_metadata(component_info, session):
         logging.error(f'Error fetching repository metadata: {e}')
         return None
 
-def calculate_checksum(cachefile, arch, url_download):
-    if url_download.endswith('.sha256sum'):
-        with open(f'cache/{cachefile}', 'r') as f:
-            lines = f.readlines()
-            if len(lines) == 1:
-                checksum_line = lines[0].strip()
-                return checksum_line.split()[0]
-            for line in lines:
-                if arch in line:
-                    return line.strip().split()[0]
-    elif url_download.endswith('SHA256SUMS'):
+def calculate_checksum(cachefile, sha_regex):
+    if sha_regex:
+        logging.debug(f'Searching with regex {sha_regex} in file {cachefile}')
         with open(f'cache/{cachefile}', 'r') as f:
             for line in f:
-                if 'linux' in line and arch in line:
-                    return line.strip().split()[0]
-    elif url_download.endswith('bsd'):
-        with open(f'cache/{cachefile}', 'r') as f:
-            for line in f:
-                if 'SHA256' in line and 'linux' in line and arch in line:
-                    return line.split('=')[1].strip()
-    sha256_hash = hashlib.sha256()
-    with open(f'cache/{cachefile}', 'rb') as f:
-        for byte_block in iter(lambda: f.read(4096), b''):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest()
-
-def download_file_and_get_checksum(component, arch, url_download, version, session):
+                if sha_regex == 'simple': # only sha is present in the file
+                    pattern = re.compile(SHA256REGEX)
+                else:
+                    pattern = re.compile(rf'(?:{SHA256REGEX}.*{sha_regex}|{sha_regex}.*{SHA256REGEX})')
+                match = pattern.search(line)
+                if match:
+                    checksum = match.group(1) or match.group(2)
+                    logging.debug(f'Matched line: {line.strip()}')
+                    return checksum
+    else: # binary
+        sha256_hash = hashlib.sha256()
+        with open(f'cache/{cachefile}', 'rb') as f:
+            for byte_block in iter(lambda: f.read(4096), b''):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+    
+def download_file_and_get_checksum(component, arch, url_download, version, sha_regex, session):
     cache_file = f'{component}-{arch}-{version}'
     if os.path.exists(f'cache/{cache_file}'):
         logging.info(f'Using cached file for {url_download}')
-        return calculate_checksum(cache_file, arch, url_download)
+        return calculate_checksum(cache_file, sha_regex)
     try:
         response = session.get(url_download, timeout=10)
         response.raise_for_status()
         with open(f'cache/{cache_file}', 'wb') as f:
             f.write(response.content)
         logging.info(f'Downloaded and cached file for {url_download}')
-        return calculate_checksum(cache_file, arch, url_download)
+        return calculate_checksum(cache_file, sha_regex)
     except Exception as e:
-        logging.error(e)
+        logging.warning(e)
         return None
 
 def get_checksums(component, component_data, versions, session):
     checksums = {}
+
     for version in versions:
         processed_version = process_version_string(component, version)
         checksums[version] = {}
-        url_download_template = component_data['url_download'].replace('VERSION', processed_version)
+        url_download_template = component_data.get('url_download')
         if component_data['checksum_structure'] == 'os_arch':
             # OS -> Arch -> Checksum
             for os_name in OSES:
                 if os_name not in checksums[version]:
                     checksums[version][os_name] = {}
                 for arch in ARCHITECTURES:
-                    url_download = url_download_template.replace('OS', os_name).replace('ARCH', arch)
-                    checksum = download_file_and_get_checksum(component, arch, url_download, processed_version, session) or 0
+                    url_download = url_download_template.format(arch=arch, os_name=os_name, version=processed_version)
+                    sha_regex = component_data.get('sha_regex').format(arch=arch, os_name=os_name)
+                    checksum = download_file_and_get_checksum(component, arch, url_download, processed_version, sha_regex, session) or 0
                     checksums[version][os_name][arch] = checksum
         elif component_data['checksum_structure'] == 'arch':
             # Arch -> Checksum
             for arch in ARCHITECTURES:
-                url_download = url_download_template.replace('ARCH', arch)
-                checksum = download_file_and_get_checksum(component, arch, url_download, processed_version, session) or 0
+                url_download = url_download_template.format(arch=arch, version=processed_version)
+                sha_regex = component_data.get('sha_regex').format(arch=arch)
+                checksum = download_file_and_get_checksum(component, arch, url_download, processed_version, sha_regex, session) or 0
                 checksums[version][arch] = checksum
         elif component_data['checksum_structure'] == 'simple':
             # Checksum
-            checksum = download_file_and_get_checksum(component, '', url_download_template, processed_version, session) or 0
+            url_download = url_download_template.format(version=processed_version)
+            sha_regex = component_data.get('sha_regex')
+            checksum = download_file_and_get_checksum(component, '', url_download_template, processed_version, sha_regex, session) or 0
             checksums[version] = checksum  # Store checksum for the version
     return checksums
 
