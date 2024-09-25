@@ -1,4 +1,4 @@
-name: Dependency create bump PR for ${{ github.event.inputs.component }} from ${{ github.event.inputs.current_version }} to ${{ github.event.inputs.latest_version }}
+name: Dependency create bump PR for ${{ inputs.component }} from ${{ inputs.current_version }} to ${{ inputs.latest_version }}
 
 on:
   workflow_dispatch:
