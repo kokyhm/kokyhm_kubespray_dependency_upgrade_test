@@ -42,14 +42,14 @@ jobs:
 
             component=$(_jq '.key')
             current_version=$(_jq '.value.current_version')
-            latest_version=$(_jq '.value.latest_version')
+            processed_latest_version=$(_jq '.value.processed_latest_version')
 
-            echo "Triggering update for $component from $current_version to $latest_version"
+            echo "Triggering update for $component from $current_version to $processed_latest_version"
 
             gh workflow run dependency-pull-request.yml \
               -f component=$component \
               -f current_version=$current_version \
-              -f latest_version=$latest_version \
+              -f latest_version=$processed_latest_version \
 
             count=$((count + 1))
 
