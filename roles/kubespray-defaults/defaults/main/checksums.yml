@@ -611,6 +611,7 @@ ciliumcli_binary_checksums:
     v0.15.16: 0
     v0.15.15: 0
 calico_crds_archive_checksums:
+  v3.28.2: f02a0e99e060850bd9050d4c94d37df899911a5e357e1d26e1b5b79a923bb389
   v3.28.1: c56f1530e7ded9d5b4afb9d83a7a24da6d2959ef7ad38521813f1c2bf138182d
   v3.28.0: ee721337db0cd847e91aae1cdfd420596896ebcb865575fd913c2f12ac2cdb76
   v3.27.3: d11a32919bff389f642af5df8180ad3cec586030decd35adb2a7d4a8aa3b298e
